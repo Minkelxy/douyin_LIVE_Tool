@@ -536,13 +536,41 @@ class CLIApp:
 
     def set_cookie(self):
         self.print("\n[设置Cookie]", style='cyan')
-        self.print("获取Cookie的方法:", style='yellow')
-        self.print("1. 打开浏览器，访问 https://live.douyin.com/")
-        self.print("2. 登录您的抖音账号")
-        self.print("3. 按F12打开开发者工具")
-        self.print("4. 切换到Network(网络)标签")
-        self.print("5. 刷新页面，找到任意请求")
-        self.print("6. 在请求头(Headers)中复制Cookie的值")
+        self.print("请选择获取Cookie的方式:", style='yellow')
+        self.print("  1. 自动扫码登录 (需要图形界面)")
+        self.print("  2. 手动输入Cookie")
+        self.print()
+
+        choice = input("请选择 (1/2): ").strip()
+
+        if choice == '1':
+            self.print("\n正在启动自动登录...", style='cyan')
+            try:
+                from auto_login import DouyinAutoLogin
+                auto = DouyinAutoLogin()
+                cookie = auto.try_playwright_login()
+                if cookie:
+                    self._save_cookie(cookie)
+                    self.saved_cookie = cookie
+                    self.print("[成功] Cookie已自动获取并保存!", style='green')
+                else:
+                    self.print("[提示] 自动登录失败，请选择手动输入", style='yellow')
+                    self.set_cookie_manual()
+            except Exception as e:
+                self.print(f"[错误] 自动登录出错: {e}", style='red')
+                self.print("请选择手动输入Cookie", style='yellow')
+                self.set_cookie_manual()
+        else:
+            self.set_cookie_manual()
+
+    def set_cookie_manual(self):
+        self.print("\n[手动输入Cookie]", style='cyan')
+        self.print("获取Cookie的快速方法:", style='yellow')
+        self.print("1. 打开 https://live.douyin.com/ 并登录")
+        self.print("2. 按F12打开开发者工具")
+        self.print("3. 切换到 Console 标签")
+        self.print("4. 输入: copy(document.cookie) 并回车")
+        self.print("5. 粘贴到下方")
         self.print()
 
         cookie_str = input("请输入Cookie (直接回车清除): ").strip()

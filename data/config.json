@@ -1,0 +1,71 @@
+{
+  "cookie": "",
+  "rules": [
+    {
+      "id": "a319fa2f",
+      "keyword": "价格",
+      "replies": [
+        "请点击主页查看商品链接",
+        "私信客服获取报价"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "daa25931",
+      "keyword": "发货",
+      "replies": [
+        "本店48小时内发货",
+        "按付款顺序发货，请耐心等待"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "54904376",
+      "keyword": "优惠",
+      "replies": [
+        "关注店铺领取优惠券",
+        "满100减10，点击领取"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "c0dcceea",
+      "keyword": "尺码",
+      "replies": [
+        "请参考详情页尺码表",
+        "建议比平时买大一码"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "d01fb669",
+      "keyword": "质量",
+      "replies": [
+        "本店商品均为正品",
+        "7天无理由退换货"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "9aaf7663",
+      "keyword": "怎么买",
+      "replies": [
+        "点击下方购物车即可购买",
+        "直接点击链接下单"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "7fe68a30",
+      "keyword": "有货吗",
+      "replies": [
+        "有货的，亲可以放心购买",
+        "库存充足，欢迎下单"
+      ],
+      "enabled": true
+    }
+  ],
+  "auto_reply": true,
+  "reply_interval": 2,
+  "blacklist": []
+}

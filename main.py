@@ -1,220 +1,132 @@
-import asyncio
+#!/usr/bin/env python3
+"""
+抖音直播间弹幕助手 v2.0
+- 实时读取弹幕
+- 智能自动回复
+- 简单易用
+"""
+
 import json
 import re
 import sys
 import time
 import uuid
-import websocket
 import requests
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
-import threading
+from datetime import datetime
 from collections import deque
+import threading
+
+import websocket
 
 try:
     from rich.console import Console
-    from rich.table import Table
-    from rich.live import Live
-    from rich.panel import Panel
-    from rich.prompt import Prompt, Confirm
-    from rich.layout import Layout
-    from rich import box
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
 
-class Database:
+class Config:
+    """配置文件管理"""
     def __init__(self):
-        self.db_path = Path(__file__).parent / "data" / "danmu.db"
-        self.db_path.parent.mkdir(exist_ok=True)
-        self.danmu_history = deque(maxlen=1000)
-        self.rules = []
-        self.reply_history = []
-        self._load_data()
+        self.config_dir = Path(__file__).parent / "data"
+        self.config_dir.mkdir(exist_ok=True, parents=True)
+        self.config_file = self.config_dir / "config.json"
+        self.load()
 
-    def _load_data(self):
-        history_file = self.db_path.parent / "history.json"
-        rules_file = self.db_path.parent / "rules.json"
-
-        if history_file.exists():
+    def load(self):
+        if self.config_file.exists():
             try:
-                with open(history_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.danmu_history = deque(data.get('danmu', [])[-1000:], maxlen=1000)
-                    self.reply_history = data.get('replies', [])
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    self.data = json.load(f)
             except:
-                pass
+                self.data = {}
+        else:
+            self.data = {}
 
-        if rules_file.exists():
-            try:
-                with open(rules_file, 'r', encoding='utf-8') as f:
-                    self.rules = json.load(f)
-            except:
-                self.rules = []
+        self.data.setdefault('cookie', '')
+        self.data.setdefault('rules', [])
+        self.data.setdefault('auto_reply', True)
+        self.data.setdefault('reply_interval', 2)
+        self.data.setdefault('blacklist', [])
 
-    def _save_data(self):
-        history_file = self.db_path.parent / "history.json"
-        rules_file = self.db_path.parent / "rules.json"
+    def save(self):
+        with open(self.config_file, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=2)
 
-        with open(history_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                'danmu': list(self.danmu_history),
-                'replies': self.reply_history[-100:]
-            }, f, ensure_ascii=False, indent=2)
+    def get(self, key, default=None):
+        return self.data.get(key, default)
 
-        with open(rules_file, 'w', encoding='utf-8') as f:
-            json.dump(self.rules, f, ensure_ascii=False, indent=2)
-
-    def save_danmu(self, danmu: Dict):
-        self.danmu_history.append(danmu)
-        self._save_data()
-
-    def save_reply(self, danmu_id: str, reply: str):
-        self.reply_history.append({
-            'danmu_id': danmu_id,
-            'reply': reply,
-            'time': datetime.now().strftime('%H:%M:%S')
-        })
-        self._save_data()
-
-    def add_rule(self, keyword: str, reply: str):
-        rule_id = str(uuid.uuid4())[:8]
-        self.rules.append({
-            'id': rule_id,
-            'keyword': keyword,
-            'reply': reply,
-            'enabled': True
-        })
-        self._save_data()
-        return True
-
-    def delete_rule(self, rule_id: str):
-        self.rules = [r for r in self.rules if r['id'] != rule_id]
-        self._save_data()
-
-    def get_rules(self):
-        return self.rules
-
-    def get_recent_danmu(self, count: int = 50):
-        return list(self.danmu_history)[-count:]
+    def set(self, key, value):
+        self.data[key] = value
+        self.save()
 
 class DouyinLive:
-    def __init__(self, console):
-        self.console = console
+    """抖音直播间连接"""
+    def __init__(self):
         self.room_id = None
         self.ws = None
         self.is_connected = False
         self.running = False
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'https://live.douyin.com/',
         }
-        self.cookies = {}
         self.on_danmu = None
         self.reply_queue = []
         self.reply_interval = 2
-        self.last_reply_time = {}
 
-    def extract_room_id(self, input_str: str) -> Optional[str]:
-        input_str = input_str.strip()
-
-        if input_str.isdigit() and len(input_str) >= 15:
-            return input_str
-
-        match = re.search(r'/(\d{15,})', input_str)
-        if match:
-            return match.group(1)
-
-        match = re.search(r'room_id=(\d+)', input_str)
-        if match:
-            return match.group(1)
-
-        match = re.search(r'(\d{15,})', input_str)
-        if match:
-            return match.group(1)
-
+    def extract_room_id(self, url):
+        url = url.strip()
+        if url.isdigit() and len(url) >= 15:
+            return url
+        match = re.search(r'/(\d{15,})', url)
+        if match: return match.group(1)
+        match = re.search(r'(\d{15,})', url)
+        if match: return match.group(1)
         return None
 
-    def set_cookies(self, cookie_str: str):
-        """设置Cookie"""
-        self.cookies = {}
-        for item in cookie_str.split(';'):
-            item = item.strip()
-            if '=' in item:
-                key, value = item.split('=', 1)
-                self.cookies[key.strip()] = value.strip()
-
-    def connect(self, room_id: str, cookie_str: str = None) -> bool:
+    def connect(self, room_id, cookie=None):
         room_id = self.extract_room_id(room_id)
         if not room_id:
-            return False
+            return False, "无效的房间号"
 
         self.room_id = room_id
+        headers = self.headers.copy()
 
-        if cookie_str:
-            self.set_cookies(cookie_str)
-
-        self.console.print(f"[cyan]正在连接直播间...[/cyan]")
+        if cookie:
+            headers['Cookie'] = cookie
 
         try:
-            params = {
-                'room_id': room_id,
-                'user_id': '',
-                'type': '0',
-                'internal_ext': '',
-                'live_timing': '1',
-            }
-
-            headers = self.headers.copy()
-            if self.cookies:
-                cookie_str = '; '.join([f"{k}={v}" for k, v in self.cookies.items()])
-                headers['Cookie'] = cookie_str
-
             response = requests.get(
                 'https://live.douyin.com/webcast/im/fetch/',
-                params=params,
+                params={'room_id': room_id, 'type': '0'},
                 headers=headers,
                 timeout=15
             )
 
             if response.status_code != 200:
-                self.console.print(f"[red]HTTP错误: {response.status_code}[/red]")
-                return False
+                return False, f"HTTP错误: {response.status_code}"
 
             if not response.text:
-                self.console.print(f"[red]服务器返回空响应[/red]")
-                self.console.print(f"[yellow]提示: 可能需要登录认证，请输入您的Cookie[/yellow]")
-                return False
+                return False, "服务器返回空响应，可能需要登录"
 
-            try:
-                data = response.json()
-            except:
-                self.console.print(f"[red]JSON解析失败[/red]")
-                return False
-
+            data = response.json()
             ws_link = data.get('data', {}).get('ws_link')
 
             if not ws_link:
-                self.console.print(f"[red]未获取到WebSocket链接[/red]")
-                self.console.print(f"[yellow]提示: 抖音API可能需要登录，请确保Cookie有效[/yellow]")
-                return False
+                return False, "无法获取弹幕链接，请检查Cookie是否有效"
 
-            self._connect_websocket(ws_link)
-            return True
+            self._start_websocket(ws_link)
+            return True, "连接成功"
 
         except requests.exceptions.Timeout:
-            self.console.print(f"[red]连接超时[/red]")
-            return False
+            return False, "连接超时"
         except requests.exceptions.RequestException as e:
-            self.console.print(f"[red]网络错误: {e}[/red]")
-            return False
+            return False, f"网络错误: {e}"
         except Exception as e:
-            self.console.print(f"[red]连接失败: {e}[/red]")
-            return False
+            return False, f"连接失败: {e}"
 
-    def _connect_websocket(self, ws_link: str):
+    def _start_websocket(self, ws_link):
         self.running = True
         self.is_connected = True
 
@@ -232,7 +144,6 @@ class DouyinLive:
             self.is_connected = False
 
         def on_open(ws):
-            self.is_connected = True
             threading.Thread(target=self._heartbeat, args=(ws,), daemon=True).start()
             threading.Thread(target=self._reply_worker, args=(ws,), daemon=True).start()
 
@@ -243,9 +154,7 @@ class DouyinLive:
             on_close=on_close,
             on_open=on_open
         )
-
-        thread = threading.Thread(target=self.ws.run_forever, daemon=True)
-        thread.start()
+        threading.Thread(target=self.ws.run_forever, daemon=True).start()
 
     def _heartbeat(self, ws):
         while self.running and self.is_connected:
@@ -273,7 +182,7 @@ class DouyinLive:
             else:
                 time.sleep(0.5)
 
-    def _handle_message(self, msg_data: Dict):
+    def _handle_message(self, msg_data):
         msg_type = msg_data.get('type', '')
 
         if msg_type == 'chat':
@@ -282,24 +191,24 @@ class DouyinLive:
                 'user': msg_data.get('user', {}).get('nickname', '匿名'),
                 'content': msg_data.get('content', ''),
                 'time': datetime.now().strftime('%H:%M:%S'),
-                'replied': False
+                'user_id': str(msg_data.get('user', {}).get('id', ''))
             }
             if self.on_danmu:
                 self.on_danmu(danmu)
 
         elif msg_type == 'member':
-            join_info = {
+            danmu = {
                 'id': f"join_{msg_data.get('user', {}).get('id', '')}",
                 'user': msg_data.get('user', {}).get('nickname', '访客'),
                 'content': '进入了直播间',
                 'time': datetime.now().strftime('%H:%M:%S'),
-                'replied': False,
+                'user_id': str(msg_data.get('user', {}).get('id', '')),
                 'is_join': True
             }
             if self.on_danmu:
-                self.on_danmu(join_info)
+                self.on_danmu(danmu)
 
-    def send_reply(self, content: str):
+    def send_reply(self, content):
         if self.is_connected:
             self.reply_queue.append(content)
             return True
@@ -312,364 +221,429 @@ class DouyinLive:
         self.is_connected = False
 
 class AutoReply:
-    def __init__(self, database):
-        self.database = database
-        self.enabled = True
+    """自动回复引擎"""
+    def __init__(self, config):
+        self.config = config
+        self.stats = {'triggered': 0, 'replies': 0}
 
-    def match_and_reply(self, danmu: Dict) -> Optional[str]:
-        if not self.enabled or danmu.get('is_join'):
+    def should_reply(self, danmu):
+        if not self.config.get('auto_reply', True):
+            return None
+
+        user_id = danmu.get('user_id', '')
+        if user_id in self.config.get('blacklist', []):
             return None
 
         content = danmu.get('content', '').lower()
+        if not content or danmu.get('is_join'):
+            return None
 
-        for rule in self.database.get_rules():
+        rules = self.config.get('rules', [])
+        for rule in rules:
             if not rule.get('enabled', True):
                 continue
 
             keyword = rule.get('keyword', '').lower()
-
-            if keyword in content:
-                reply = rule.get('reply', '')
-                if reply:
-                    self.database.save_reply(danmu.get('id', ''), reply)
+            if keyword and keyword in content:
+                replies = rule.get('replies', [])
+                if replies:
+                    import random
+                    reply = random.choice(replies)
+                    self.stats['triggered'] += 1
+                    self.stats['replies'] += 1
                     return reply
 
         return None
 
-class CLIApp:
+class CLI:
+    """命令行界面"""
     def __init__(self):
+        self.config = Config()
+        self.douyin = DouyinLive()
+        self.auto_reply = AutoReply(self.config)
         self.console = Console() if HAS_RICH else None
-        self.database = Database()
-        self.douyin = DouyinLive(self.console)
-        self.auto_reply = AutoReply(self.database)
-
-        self.danmu_buffer = deque(maxlen=100)
+        self.danmu_history = deque(maxlen=500)
+        self.stats = {'total': 0, 'joins': 0}
         self.running = False
-        self.danmu_count = 0
-        self.reply_count = 0
-        self.saved_cookie = self._load_cookie()
 
-    def _load_cookie(self):
-        cookie_file = Path(__file__).parent / "data" / "cookie.txt"
-        if cookie_file.exists():
-            try:
-                return cookie_file.read_text().strip()
-            except:
-                pass
-        return None
-
-    def _save_cookie(self, cookie_str):
-        cookie_file = Path(__file__).parent / "data" / "cookie.txt"
-        cookie_file.parent.mkdir(exist_ok=True)
-        cookie_file.write_text(cookie_str)
-
-    def print(self, msg='', style=''):
-        if self.console:
-            if style:
-                self.console.print(msg, style=style)
-            else:
-                if msg:
-                    self.console.print(msg)
+    def p(self, msg, style=''):
+        if style and HAS_RICH:
+            print(f"[{style}]{msg}[/{style}]")
         else:
             print(msg)
 
     def print_banner(self):
         banner = """
-╔═══════════════════════════════════════════════════════╗
-║          抖音直播间弹幕助手 v1.0 (CLI)                  ║
-║                                                       ║
-║  实时读取弹幕 | 自动回复 | 规则管理                    ║
-╚═══════════════════════════════════════════════════════╝
-        """
-        self.print(banner)
+╔══════════════════════════════════════════════════════════════╗
+║         抖音直播间弹幕助手 v2.0                            ║
+║                                                          ║
+║  实时弹幕  |  智能回复  |  数据统计                     ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+        print(banner)
 
-    def show_menu(self):
-        menu = """
-操作菜单:
-  1. 连接直播间
-  2. 添加回复规则
-  3. 查看规则列表
-  4. 删除规则
-  5. 开关自动回复
-  6. 查看弹幕历史
-  7. 导出数据
-  8. 设置Cookie
-  0. 退出程序
-        """
-        self.print(menu)
+    def check_cookie(self):
+        cookie = self.config.get('cookie', '')
+        if not cookie:
+            self.p("\n⚠️  尚未设置Cookie，无法连接直播间", "yellow")
+            self.p("\n请先设置Cookie (选项 2)", "cyan")
+            return False
+        return True
 
     def connect_room(self):
-        self.print("\n[提示] 请输入直播间链接或房间号", style='cyan')
-        room_id = input("> ").strip()
+        if not self.check_cookie():
+            return
+
+        print("\n请输入直播间链接或房间号:", end=" ")
+        room_id = input().strip()
 
         if not room_id:
-            self.print("[错误] 房间号不能为空", style='red')
+            self.p("房间号不能为空", "red")
             return
 
-        cookie_str = None
-        if self.saved_cookie:
-            self.print(f"[提示] 已加载保存的Cookie", style='green')
-            use_saved = input("使用保存的Cookie? (Y/n): ").strip().lower()
-            if use_saved != 'n':
-                cookie_str = self.saved_cookie
+        self.p("\n正在连接...", "cyan")
+        success, message = self.douyin.connect(room_id, self.config.get('cookie'))
 
-        if not cookie_str:
-            self.print("\n[提示] 如连接失败，请先设置Cookie (选项8)", style='yellow')
-            try_cookie = input("是否继续尝试连接? (y/N): ").strip().lower()
-            if try_cookie != 'y':
-                return
-
-        if self.douyin.connect(room_id, cookie_str):
-            self.print("[成功] 已连接到直播间!", style='green')
-            self.print("[提示] 按 Ctrl+C 可以暂停监控，返回菜单", style='yellow')
-            return True
+        if success:
+            self.p(f"✅ {message}", "green")
+            self.start_monitor()
         else:
-            self.print("[错误] 连接失败", style='red')
-            self.print("\n[解决方案]", style='yellow')
-            self.print("1. 请确保直播间正在直播中")
-            self.print("2. 请尝试设置Cookie (选项8)")
-            self.print("   获取方法:")
-            self.print("   - 打开抖音直播网页版")
-            self.print("   - 登录后按F12打开开发者工具")
-            self.print("   - 复制Network中的Cookie值")
-            return False
+            self.p(f"❌ {message}", "red")
+            if "登录" in message or "Cookie" in message:
+                self.p("\n解决方案:", "yellow")
+                self.p("1. Cookie可能已过期，请重新设置 (选项2)")
+                self.p("2. 确保直播间正在直播中")
 
-    def add_rule(self):
-        self.print("\n[添加回复规则]", style='cyan')
-        keyword = input("请输入触发关键词: ").strip()
-        reply = input("请输入回复内容: ").strip()
-
-        if not keyword or not reply:
-            self.print("[错误] 关键词和回复内容都不能为空", style='red')
-            return
-
-        if self.database.add_rule(keyword, reply):
-            self.print("[成功] 规则添加成功!", style='green')
-        else:
-            self.print("[错误] 规则添加失败", style='red')
-
-    def list_rules(self):
-        rules = self.database.get_rules()
-
-        if not rules:
-            self.print("\n[提示] 暂无回复规则", style='yellow')
-            return
-
-        self.print(f"\n{'='*60}", style='cyan')
-        self.print(f"{'规则列表':^60}", style='bold cyan')
-        self.print(f"{'='*60}", style='cyan')
-
-        for i, rule in enumerate(rules, 1):
-            status = "[启用]" if rule.get('enabled', True) else "[禁用]"
-            self.print(f"\n{i}. {status}")
-            self.print(f"   关键词: {rule.get('keyword', '')}")
-            self.print(f"   回复: {rule.get('reply', '')}")
-            self.print(f"   ID: {rule.get('id', '')}")
-
-    def delete_rule(self):
-        rules = self.database.get_rules()
-
-        if not rules:
-            self.print("\n[提示] 暂无回复规则", style='yellow')
-            return
-
-        self.list_rules()
-        self.print("\n请输入要删除的规则编号或ID: ", style='cyan', end='')
-
-        choice = input().strip()
-
-        rule_id = None
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(rules):
-                rule_id = rules[idx]['id']
-        else:
-            rule_id = choice
-
-        if rule_id:
-            self.database.delete_rule(rule_id)
-            self.print("[成功] 规则已删除", style='green')
-        else:
-            self.print("[错误] 无效的选择", style='red')
-
-    def toggle_auto_reply(self):
-        self.auto_reply.enabled = not self.auto_reply.enabled
-        status = "启用" if self.auto_reply.enabled else "禁用"
-        self.print(f"[提示] 自动回复已{status}", style='green' if self.auto_reply.enabled else 'yellow')
-
-    def show_history(self):
-        history = self.database.get_recent_danmu(50)
-
-        if not history:
-            self.print("\n[提示] 暂无弹幕历史", style='yellow')
-            return
-
-        self.print(f"\n{'='*60}", style='cyan')
-        self.print(f"{'弹幕历史 (最近50条)':^60}", style='bold cyan')
-        self.print(f"{'='*60}", style='cyan')
-
-        for danmu in reversed(history):
-            if danmu.get('is_join'):
-                self.print(f"[{danmu['time']}] {danmu['user']} {danmu['content']}", style='dim')
-            else:
-                replied = "[已回复]" if danmu.get('replied') else ""
-                self.print(f"[{danmu['time']}] {danmu['user']}: {danmu['content']} {replied}")
-
-    def export_data(self):
-        self.print("\n正在导出数据...", style='cyan')
-
-        export_file = Path(__file__).parent / "data" / f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-
-        data = {
-            'danmu_history': list(self.database.danmu_history),
-            'reply_history': self.database.reply_history,
-            'rules': self.database.rules,
-            'export_time': datetime.now().isoformat()
-        }
-
-        try:
-            with open(export_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            self.print(f"[成功] 数据已导出到: {export_file}", style='green')
-        except Exception as e:
-            self.print(f"[错误] 导出失败: {e}", style='red')
-
-    def set_cookie(self):
-        self.print("\n[设置Cookie]", style='cyan')
-        self.print("请选择获取Cookie的方式:", style='yellow')
-        self.print("  1. 自动扫码登录 (需要图形界面)")
-        self.print("  2. 手动输入Cookie")
-        self.print()
-
-        choice = input("请选择 (1/2): ").strip()
-
-        if choice == '1':
-            self.print("\n正在启动自动登录...", style='cyan')
-            try:
-                from auto_login import DouyinAutoLogin
-                auto = DouyinAutoLogin()
-                cookie = auto.try_playwright_login()
-                if cookie:
-                    self._save_cookie(cookie)
-                    self.saved_cookie = cookie
-                    self.print("[成功] Cookie已自动获取并保存!", style='green')
-                else:
-                    self.print("[提示] 自动登录失败，请选择手动输入", style='yellow')
-                    self.set_cookie_manual()
-            except Exception as e:
-                self.print(f"[错误] 自动登录出错: {e}", style='red')
-                self.print("请选择手动输入Cookie", style='yellow')
-                self.set_cookie_manual()
-        else:
-            self.set_cookie_manual()
-
-    def set_cookie_manual(self):
-        self.print("\n[手动输入Cookie]", style='cyan')
-        self.print("获取Cookie的快速方法:", style='yellow')
-        self.print("1. 打开 https://live.douyin.com/ 并登录")
-        self.print("2. 按F12打开开发者工具")
-        self.print("3. 切换到 Console 标签")
-        self.print("4. 输入: copy(document.cookie) 并回车")
-        self.print("5. 粘贴到下方")
-        self.print()
-
-        cookie_str = input("请输入Cookie (直接回车清除): ").strip()
-
-        if cookie_str:
-            self._save_cookie(cookie_str)
-            self.saved_cookie = cookie_str
-            self.print("[成功] Cookie已保存!", style='green')
-        else:
-            cookie_file = Path(__file__).parent / "data" / "cookie.txt"
-            if cookie_file.exists():
-                cookie_file.unlink()
-            self.saved_cookie = None
-            self.print("[提示] Cookie已清除", style='yellow')
-
-    def start_monitoring(self):
+    def start_monitor(self):
         self.running = True
-        self.danmu_count = 0
-        self.reply_count = 0
+        self.stats = {'total': 0, 'joins': 0}
+        self.danmu_history.clear()
 
         def on_danmu(danmu):
-            self.database.save_danmu(danmu)
-            self.danmu_count += 1
+            self.danmu_history.append(danmu)
+            self.stats['total'] += 1
+            if danmu.get('is_join'):
+                self.stats['joins'] += 1
 
-            if not danmu.get('is_join'):
-                if self.console:
-                    self.console.print(f"[{danmu['time']}] {danmu['user']}: {danmu['content']}")
+            content = f"[{danmu['time']}] {danmu['user']}: {danmu['content']}"
+            if danmu.get('is_join'):
+                print(content)
+            else:
+                print(content)
 
-                reply = self.auto_reply.match_and_reply(danmu)
-                if reply:
-                    self.douyin.send_reply(reply)
-                    self.reply_count += 1
-                    danmu['replied'] = True
-                    if self.console:
-                        self.console.print(f"    [自动回复] {reply}", style='green')
+            reply = self.auto_reply.should_reply(danmu)
+            if reply:
+                self.douyin.send_reply(reply)
+                self.p(f"    └─ 🤖 自动回复: {reply}", "green")
 
         self.douyin.on_danmu = on_danmu
 
-        self.print("\n[监控中] 正在监听弹幕...", style='bold green')
-        self.print(f"[统计] 弹幕: {self.danmu_count} | 回复: {self.reply_count} | 自动回复: {'开启' if self.auto_reply.enabled else '关闭'}", style='dim')
-        self.print("按 Ctrl+C 停止监听\n", style='dim')
+        self.p("\n" + "="*60, "cyan")
+        self.p("监控中... 按 Ctrl+C 停止", "green")
+        self.p("="*60, "cyan")
 
         try:
             while self.running and self.douyin.is_connected:
                 time.sleep(1)
         except KeyboardInterrupt:
-            self.stop_monitoring()
+            self.stop_monitor()
 
-    def stop_monitoring(self):
+    def stop_monitor(self):
         self.running = False
         self.douyin.disconnect()
-        self.print("\n[提示] 监控已停止", style='yellow')
-        self.print(f"[统计] 本次共捕获 {self.danmu_count} 条弹幕，发送 {self.reply_count} 条回复", style='cyan')
+        self.p("\n监控已停止", "yellow")
+        self.p(f"本次: {self.stats['total']}条弹幕, {self.stats['joins']}人入场, {self.auto_reply.stats['replies']}条回复", "cyan")
+
+    def setup_cookie(self):
+        print("\n" + "="*60)
+        print("设置Cookie - 快速获取方法:", "cyan")
+        print("="*60)
+        print("""
+1. 打开浏览器访问 https://live.douyin.com/ 并登录
+2. 按 F12 打开开发者工具
+3. 切换到 Console 标签
+4. 输入: copy(document.cookie) 并回车
+5. 粘贴到下方
+        """)
+
+        print("请输入Cookie (直接回车跳过):", end=" ")
+        cookie = input().strip()
+
+        if cookie:
+            self.config.set('cookie', cookie)
+            self.p("✅ Cookie已保存!", "green")
+
+            self.p("\n正在测试连接...", "cyan")
+            success, msg = self.douyin.connect("1", cookie)
+            self.douyin.disconnect()
+
+            if success:
+                self.p("✅ Cookie有效!", "green")
+            else:
+                self.p(f"⚠️  Cookie可能无效: {msg}", "yellow")
+        else:
+            self.p("已跳过", "yellow")
+
+    def manage_rules(self):
+        while True:
+            print("\n" + "="*60)
+            print("回复规则管理", "cyan")
+            print("="*60)
+
+            rules = self.config.get('rules', [])
+
+            if not rules:
+                print("\n暂无规则，建议导入预设规则!")
+            else:
+                print(f"\n共 {len(rules)} 条规则:")
+                for i, rule in enumerate(rules, 1):
+                    status = "✓" if rule.get('enabled', True) else "✗"
+                    keyword = rule.get('keyword', '')
+                    replies = rule.get('replies', [])
+                    print(f"  {i}. [{status}] {keyword} → {replies[0] if replies else ''}")
+
+            print("\n操作:")
+            print("  1. 添加规则")
+            print("  2. 删除规则")
+            print("  3. 导入预设规则 (推荐)")
+            print("  0. 返回")
+
+            choice = input("\n请选择: ").strip()
+
+            if choice == '1':
+                self.add_rule()
+            elif choice == '2':
+                self.delete_rule()
+            elif choice == '3':
+                self.import_preset_rules()
+            elif choice == '0':
+                break
+
+    def add_rule(self):
+        print("\n添加回复规则")
+        keyword = input("触发关键词: ").strip()
+        if not keyword:
+            self.p("关键词不能为空", "red")
+            return
+
+        print("回复内容 (多条用|分隔):", end=" ")
+        replies_input = input().strip()
+        if not replies_input:
+            self.p("回复内容不能为空", "red")
+            return
+
+        replies = [r.strip() for r in replies_input.split('|') if r.strip()]
+
+        rule = {
+            'id': str(uuid.uuid4())[:8],
+            'keyword': keyword,
+            'replies': replies,
+            'enabled': True
+        }
+
+        rules = self.config.get('rules', [])
+        rules.append(rule)
+        self.config.set('rules', rules)
+
+        self.p("✅ 规则添加成功!", "green")
+
+    def delete_rule(self):
+        rules = self.config.get('rules', [])
+        if not rules:
+            print("暂无规则")
+            return
+
+        try:
+            idx = int(input("输入要删除的编号: ").strip()) - 1
+            if 0 <= idx < len(rules):
+                rules.pop(idx)
+                self.config.set('rules', rules)
+                self.p("✅ 已删除", "green")
+            else:
+                self.p("无效编号", "red")
+        except ValueError:
+            self.p("请输入数字", "red")
+
+    def import_preset_rules(self):
+        presets = [
+            ("价格", ["请点击主页查看商品链接", "私信客服获取报价"]),
+            ("发货", ["本店48小时内发货", "按付款顺序发货，请耐心等待"]),
+            ("优惠", ["关注店铺领取优惠券", "满100减10，点击领取"]),
+            ("尺码", ["请参考详情页尺码表", "建议比平时买大一码"]),
+            ("质量", ["本店商品均为正品", "7天无理由退换货"]),
+            ("怎么买", ["点击下方购物车即可购买", "直接点击链接下单"]),
+            ("有货吗", ["有货的，亲可以放心购买", "库存充足，欢迎下单"]),
+        ]
+
+        print("\n选择预设规则 (输入编号，多个用逗号分隔):")
+        for i, (keyword, replies) in enumerate(presets, 1):
+            print(f"  {i}. {keyword}: {' | '.join(replies)}")
+
+        print("\n  a. 导入全部")
+        choice = input("请选择: ").strip()
+
+        if not choice:
+            return
+
+        rules = self.config.get('rules', [])
+
+        if choice.lower() == 'a':
+            indices = list(range(len(presets)))
+        else:
+            try:
+                indices = [int(x.strip()) - 1 for x in choice.split(',')]
+            except ValueError:
+                self.p("输入格式错误", "red")
+                return
+
+        added = 0
+        for idx in indices:
+            if 0 <= idx < len(presets):
+                keyword, replies = presets[idx]
+                if not any(r.get('keyword') == keyword for r in rules):
+                    rules.append({
+                        'id': str(uuid.uuid4())[:8],
+                        'keyword': keyword,
+                        'replies': replies,
+                        'enabled': True
+                    })
+                    added += 1
+
+        self.config.set('rules', rules)
+        self.p(f"✅ 已导入 {added} 条规则", "green")
+
+    def show_settings(self):
+        print("\n" + "="*60)
+        print("设置", "cyan")
+        print("="*60)
+
+        auto_reply = self.config.get('auto_reply', True)
+        interval = self.config.get('reply_interval', 2)
+        blacklist = self.config.get('blacklist', [])
+
+        self.p(f"\n1. 自动回复: {'开启' if auto_reply else '关闭'}")
+        self.p(f"2. 回复间隔: {interval}秒")
+        self.p(f"3. 黑名单人数: {len(blacklist)}")
+
+        print("\n操作:")
+        print("  1. 开关自动回复")
+        print("  2. 设置回复间隔")
+        print("  3. 查看/管理黑名单")
+        print("  0. 返回")
+
+        choice = input("\n请选择: ").strip()
+
+        if choice == '1':
+            current = self.config.get('auto_reply', True)
+            self.config.set('auto_reply', not current)
+            self.p(f"自动回复已{'关闭' if current else '开启'}", "green")
+        elif choice == '2':
+            try:
+                interval = int(input("输入间隔秒数: ").strip())
+                if interval >= 1:
+                    self.config.set('reply_interval', interval)
+                    self.douyin.reply_interval = interval
+                    self.p("已设置", "green")
+            except ValueError:
+                self.p("请输入数字", "red")
+        elif choice == '3':
+            self.manage_blacklist()
+
+    def manage_blacklist(self):
+        blacklist = self.config.get('blacklist', [])
+        print("\n黑名单管理")
+        if blacklist:
+            print(f"当前黑名单 ({len(blacklist)}人):")
+            for i, uid in enumerate(blacklist, 1):
+                print(f"  {i}. {uid}")
+        else:
+            print("黑名单为空")
+
+        print("\n  1. 添加用户到黑名单")
+        print("  2. 从黑名单移除")
+        print("  0. 返回")
+
+        choice = input("\n请选择: ").strip()
+
+        if choice == '1':
+            uid = input("输入用户ID: ").strip()
+            if uid and uid not in blacklist:
+                blacklist.append(uid)
+                self.config.set('blacklist', blacklist)
+                self.p("✅ 已添加到黑名单", "green")
+        elif choice == '2':
+            try:
+                idx = int(input("输入编号: ").strip()) - 1
+                if 0 <= idx < len(blacklist):
+                    blacklist.pop(idx)
+                    self.config.set('blacklist', blacklist)
+                    self.p("✅ 已从黑名单移除", "green")
+            except ValueError:
+                self.p("请输入数字", "red")
+
+    def show_history(self):
+        print("\n" + "="*60)
+        print("弹幕历史", "cyan")
+        print("="*60)
+
+        history = list(self.danmu_history)[-30:]
+
+        if not history:
+            print("\n暂无弹幕")
+            return
+
+        for danmu in reversed(history):
+            if danmu.get('is_join'):
+                print(f"[{danmu['time']}] {danmu['user']} {danmu['content']}")
+            else:
+                print(f"[{danmu['time']}] {danmu['user']}: {danmu['content']}")
 
     def run(self):
         self.print_banner()
 
+        cookie = self.config.get('cookie', '')
+        if cookie:
+            self.p("✅ 已检测到保存的Cookie", "green")
+        else:
+            self.p("⚠️  尚未设置Cookie", "yellow")
+
+        rules = self.config.get('rules', [])
+        if rules:
+            self.p(f"✅ 已加载 {len(rules)} 条回复规则", "green")
+
         while True:
-            self.show_menu()
-            choice = input("\n请选择操作 (0-8): ").strip()
+            print("\n" + "-"*60)
+            print("主菜单", "cyan")
+            print("-"*60)
+            print("  1. 连接直播间")
+            print("  2. 设置Cookie")
+            print("  3. 管理回复规则")
+            print("  4. 设置")
+            print("  5. 查看历史")
+            print("  0. 退出")
+
+            choice = input("\n请选择: ").strip()
 
             if choice == '1':
-                if self.connect_room():
-                    self.start_monitoring()
-
+                self.connect_room()
             elif choice == '2':
-                self.add_rule()
-
+                self.setup_cookie()
             elif choice == '3':
-                self.list_rules()
-
+                self.manage_rules()
             elif choice == '4':
-                self.delete_rule()
-
+                self.show_settings()
             elif choice == '5':
-                self.toggle_auto_reply()
-
-            elif choice == '6':
                 self.show_history()
-
-            elif choice == '7':
-                self.export_data()
-
-            elif choice == '8':
-                self.set_cookie()
-
             elif choice == '0':
                 if self.douyin.is_connected:
                     self.douyin.disconnect()
-                self.print("\n[提示] 感谢使用，再见!", style='cyan')
+                self.p("\n感谢使用! 👋", "cyan")
                 break
-
-            else:
-                self.print("\n[错误] 无效的选择，请输入 0-8", style='red')
 
 if __name__ == '__main__':
     try:
-        app = CLIApp()
-        app.run()
+        cli = CLI()
+        cli.run()
     except KeyboardInterrupt:
-        print("\n\n[提示] 程序已退出")
+        print("\n\n程序已退出")
         sys.exit(0)

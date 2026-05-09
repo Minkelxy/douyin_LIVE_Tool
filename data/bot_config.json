@@ -1,0 +1,72 @@
+{
+  "cookie": "",
+  "room_id": "",
+  "rules": [
+    {
+      "id": "2e293fa0",
+      "keyword": "price",
+      "replies": [
+        "Check product link on profile",
+        "DM for price"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "e481c7c6",
+      "keyword": "shipping",
+      "replies": [
+        "Ships within 48 hours",
+        "Ships in order of payment"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "9826ff60",
+      "keyword": "discount",
+      "replies": [
+        "Follow for coupons",
+        "100-10 discount available"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "a285f918",
+      "keyword": "size",
+      "replies": [
+        "Check size chart in description",
+        "Recommend one size up"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "643af687",
+      "keyword": "quality",
+      "replies": [
+        "100% authentic",
+        "7-day return policy"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "a9742b1e",
+      "keyword": "buy",
+      "replies": [
+        "Click cart below to buy",
+        "Use link to order"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "42a05e23",
+      "keyword": "stock",
+      "replies": [
+        "In stock, feel free to order",
+        "Plenty available"
+      ],
+      "enabled": true
+    }
+  ],
+  "auto_reply": true,
+  "reply_interval": 2,
+  "blacklist": []
+}

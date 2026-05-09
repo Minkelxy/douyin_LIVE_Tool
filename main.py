@@ -1,687 +1,538 @@
+import asyncio
+import json
+import re
 import sys
+import time
+import uuid
+import websocket
+import requests
+from datetime import datetime
 from pathlib import Path
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QLineEdit, QPushButton, QTextEdit, QListWidget,
-                             QListWidgetItem, QGroupBox, QScrollArea, QFrame, QMessageBox,
-                             QDialog, QFormLayout, QComboBox, QCheckBox, QTabWidget,
-                             QSplitter, QStatusBar, QMenuBar, QMenu)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize
-from PyQt6.QtGui import QFont, QColor, QPalette, QAction, QIcon, QPainter, QBrush, QPen
-from modules.core.database import Database
-from modules.core.config import Config
-from modules.core.reply_engine import ReplyEngine
-from modules.api.douyin_api import DouyinAPI
+from typing import List, Dict, Optional
+import threading
+from collections import deque
 
-class AnimatedListWidget(QListWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setUniformItemSizes(True)
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.prompt import Prompt, Confirm
+    from rich.layout import Layout
+    from rich import box
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
 
-class DanmuItem(QFrame):
-    def __init__(self, danmu_data, parent=None):
-        super().__init__(parent)
-        self.danmu_data = danmu_data
-        self.setup_ui()
-
-    def setup_ui(self):
-        self.setFixedHeight(70)
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #16213E;
-                border-left: 3px solid #25F4EE;
-                border-radius: 6px;
-                margin: 4px;
-                padding: 8px;
-            }
-            QFrame:hover {
-                background-color: #1A2847;
-            }
-        """)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 5, 10, 5)
-        layout.setSpacing(5)
-
-        top_layout = QHBoxLayout()
-
-        nickname_label = QLabel(f"@{self.danmu_data.get('nickname', '匿名用户')}")
-        nickname_font = QFont()
-        nickname_font.setPointSize(11)
-        nickname_font.setBold(True)
-        nickname_label.setFont(nickname_font)
-        nickname_label.setStyleSheet("color: #25F4EE; background: transparent;")
-
-        time_label = QLabel(self.danmu_data.get('received_at', ''))
-        time_label.setStyleSheet("color: #888; background: transparent;")
-        time_font = QFont()
-        time_font.setPointSize(9)
-        time_label.setFont(time_font)
-
-        top_layout.addWidget(nickname_label)
-        top_layout.addStretch()
-        top_layout.addWidget(time_label)
-
-        content_label = QLabel(self.danmu_data.get('content', ''))
-        content_label.setWordWrap(True)
-        content_font = QFont()
-        content_font.setPointSize(12)
-        content_label.setFont(content_font)
-        content_label.setStyleSheet("color: #FFFFFF; background: transparent;")
-
-        layout.addLayout(top_layout)
-        layout.addWidget(content_label)
-
-        if self.danmu_data.get('replied'):
-            self.setStyleSheet("""
-                QFrame {
-                    background-color: #16213E;
-                    border-left: 3px solid #00C853;
-                    border-radius: 6px;
-                    margin: 4px;
-                    padding: 8px;
-                }
-            """)
-
-class StatusIndicator(QFrame):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.status = False
-        self.setFixedSize(12, 12)
-
-    def set_status(self, connected):
-        self.status = connected
-        self.update()
-
-    def paint(self, painter):
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        color = QColor("#00C853") if self.status else QColor("#FF5252")
-        brush = QBrush(color)
-        painter.setBrush(brush)
-
-        pen = QPen(Qt.PenStyle.NoPen)
-        painter.setPen(pen)
-
-        painter.drawEllipse(0, 0, 12, 12)
-
-class MainWindow(QMainWindow):
-    danmu_received = pyqtSignal(dict)
-    status_changed = pyqtSignal(str, bool)
-
+class Database:
     def __init__(self):
-        super().__init__()
-        self.database = Database()
-        self.config = Config()
-        self.reply_engine = ReplyEngine(self.database)
-        self.douyin_api = DouyinAPI()
-
-        self.danmu_list = []
-        self.max_danmu_display = 500
-
-        self.init_ui()
-        self.init_connections()
-
-        self.douyin_api.set_on_danmu_callback(self.handle_new_danmu)
-        self.douyin_api.set_on_status_callback(self.handle_status_change)
-
-        self.reply_engine.set_reply_callback(self.handle_auto_reply)
-
-        self.reply_engine.load_rules()
-        self.update_rules_display()
-
-    def init_ui(self):
-        self.setWindowTitle("抖音弹幕助手 v1.0")
-        self.setMinimumSize(1000, 700)
-
-        self.apply_stylesheet()
-
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-
-        left_panel = self.create_left_panel()
-        right_panel = self.create_right_panel()
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setSizes([300, 700])
-
-        main_layout.addWidget(splitter)
-
-        self.create_status_bar()
-
-    def apply_stylesheet(self):
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #1A1A2E;
-            }
-            QWidget {
-                font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-                font-size: 14px;
-                color: #FFFFFF;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #25F4EE;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                color: #25F4EE;
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-            QLineEdit {
-                background-color: #0F3460;
-                border: 1px solid #25F4EE;
-                border-radius: 6px;
-                padding: 10px;
-                color: #FFFFFF;
-                selection-background-color: #FE2C55;
-            }
-            QLineEdit:focus {
-                border: 1px solid #4FD5D3;
-            }
-            QLineEdit:disabled {
-                background-color: #0A1628;
-                border: 1px solid #555;
-                color: #888;
-            }
-            QPushButton {
-                background-color: #FE2C55;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                color: #FFFFFF;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FF4080;
-            }
-            QPushButton:pressed {
-                background-color: #E02440;
-            }
-            QPushButton:disabled {
-                background-color: #555;
-                color: #888;
-            }
-            QPushButton.secondary {
-                background-color: transparent;
-                border: 1px solid #25F4EE;
-                color: #25F4EE;
-            }
-            QPushButton.secondary:hover {
-                background-color: rgba(37, 244, 238, 0.1);
-            }
-            QPushButton.success {
-                background-color: #00C853;
-            }
-            QPushButton.success:hover {
-                background-color: #00E676;
-            }
-            QPushButton.danger {
-                background-color: #FF5252;
-            }
-            QPushButton.danger:hover {
-                background-color: #FF7070;
-            }
-            QListWidget {
-                background-color: #0F3460;
-                border: 1px solid #25F4EE;
-                border-radius: 8px;
-                padding: 5px;
-                outline: none;
-            }
-            QListWidget::item {
-                color: #FFFFFF;
-                padding: 5px;
-                border-radius: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: rgba(254, 44, 85, 0.3);
-            }
-            QScrollBar:vertical {
-                background-color: #0F3460;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #25F4EE;
-                border-radius: 5px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #4FD5D3;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QCheckBox {
-                color: #FFFFFF;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #25F4EE;
-                border-radius: 4px;
-                background-color: transparent;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #25F4EE;
-            }
-            QComboBox {
-                background-color: #0F3460;
-                border: 1px solid #25F4EE;
-                border-radius: 6px;
-                padding: 8px;
-                color: #FFFFFF;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #25F4EE;
-            }
-            QTabWidget::pane {
-                border: 1px solid #25F4EE;
-                border-radius: 8px;
-                background-color: #16213E;
-            }
-            QTabBar::tab {
-                background-color: #0F3460;
-                color: #B8B8B8;
-                padding: 8px 20px;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-            }
-            QTabBar::tab:selected {
-                background-color: #16213E;
-                color: #FFFFFF;
-            }
-            QLabel {
-                background: transparent;
-            }
-            QStatusBar {
-                background-color: #0F3460;
-                color: #B8B8B8;
-            }
-        """)
-
-    def create_left_panel(self):
-        left_widget = QWidget()
-        left_widget.setFixedWidth(300)
-
-        layout = QVBoxLayout(left_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(15)
-
-        connection_group = self.create_connection_group()
-        rules_group = self.create_rules_group()
-        control_group = self.create_control_group()
-
-        layout.addWidget(connection_group)
-        layout.addWidget(rules_group)
-        layout.addWidget(control_group)
-        layout.addStretch()
-
-        return left_widget
-
-    def create_connection_group(self):
-        group = QGroupBox("🔗 直播间连接")
-
-        layout = QVBoxLayout()
-        layout.setSpacing(12)
-
-        room_layout = QFormLayout()
-        self.room_id_input = QLineEdit()
-        self.room_id_input.setPlaceholderText("输入直播间链接或房间号")
-        room_layout.addRow("房间ID:", self.room_id_input)
-
-        self.connect_btn = QPushButton("连接直播间")
-        self.connect_btn.clicked.connect(self.toggle_connection)
-
-        self.status_label = QLabel("状态: 未连接")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.status_indicator = StatusIndicator()
-
-        status_layout = QHBoxLayout()
-        status_layout.addWidget(self.status_indicator)
-        status_layout.addWidget(self.status_label)
-
-        layout.addLayout(room_layout)
-        layout.addWidget(self.connect_btn)
-        layout.addLayout(status_layout)
-
-        group.setLayout(layout)
-        return group
-
-    def create_rules_group(self):
-        group = QGroupBox("⚙️ 自动回复规则")
-
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-
-        self.enable_auto_reply = QCheckBox("启用自动回复")
-        self.enable_auto_reply.setChecked(True)
-        self.enable_auto_reply.stateChanged.connect(self.toggle_auto_reply)
-        layout.addWidget(self.enable_auto_reply)
-
-        self.rules_list = QListWidget()
-        self.rules_list.setMaximumHeight(150)
-        layout.addWidget(self.rules_list)
-
-        btn_layout = QHBoxLayout()
-
-        add_rule_btn = QPushButton("添加规则")
-        add_rule_btn.clicked.connect(self.show_add_rule_dialog)
-        add_rule_btn.setFixedHeight(32)
-        btn_layout.addWidget(add_rule_btn)
-
-        del_rule_btn = QPushButton("删除")
-        del_rule_btn.clicked.connect(self.delete_selected_rule)
-        del_rule_btn.setFixedHeight(32)
-        del_rule_btn.setStyleSheet("background-color: #FF5252;")
-        btn_layout.addWidget(del_rule_btn)
-
-        layout.addLayout(btn_layout)
-
-        group.setLayout(layout)
-        return group
-
-    def create_control_group(self):
-        group = QGroupBox("🎮 控制面板")
-
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-
-        self.clear_btn = QPushButton("清空弹幕")
-        self.clear_btn.clicked.connect(self.clear_danmu)
-        layout.addWidget(self.clear_btn)
-
-        self.export_btn = QPushButton("导出历史")
-        self.export_btn.clicked.connect(self.export_history)
-        layout.addWidget(self.export_btn)
-
-        group.setLayout(layout)
-        return group
-
-    def create_right_panel(self):
-        right_widget = QWidget()
-
-        layout = QVBoxLayout(right_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-
-        header = self.create_header()
-        self.danmu_list_widget = AnimatedListWidget()
-        self.danmu_list_widget.setSpacing(5)
-
-        layout.addWidget(header)
-        layout.addWidget(self.danmu_list_widget)
-
-        return right_widget
-
-    def create_header(self):
-        header_widget = QWidget()
-        header_widget.setFixedHeight(50)
-
-        layout = QHBoxLayout(header_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        title = QLabel("📺 实时弹幕")
-        title.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
-        title.setStyleSheet("color: #FFFFFF;")
-
-        self.danmu_count_label = QLabel("弹幕数: 0")
-        self.danmu_count_label.setStyleSheet("color: #B8B8B8;")
-
-        self.reply_count_label = QLabel("回复数: 0")
-        self.reply_count_label.setStyleSheet("color: #B8B8B8;")
-
-        layout.addWidget(title)
-        layout.addStretch()
-        layout.addWidget(self.danmu_count_label)
-        layout.addWidget(self.reply_count_label)
-
-        return header_widget
-
-    def create_status_bar(self):
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        self.statusBar.showMessage("准备就绪")
-
-    def init_connections(self):
-        pass
-
-    def toggle_connection(self):
-        if self.douyin_api.is_connected:
-            self.douyin_api.disconnect()
-            self.connect_btn.setText("连接直播间")
-            self.connect_btn.setEnabled(True)
-            self.room_id_input.setEnabled(True)
-        else:
-            room_id = self.room_id_input.text().strip()
-            if not room_id:
-                QMessageBox.warning(self, "提示", "请输入直播间链接或房间号")
-                return
-
-            self.connect_btn.setEnabled(False)
-            self.connect_btn.setText("连接中...")
-
-            if self.douyin_api.connect(room_id):
-                self.connect_btn.setText("断开连接")
-                self.connect_btn.setEnabled(True)
-                self.room_id_input.setEnabled(False)
-            else:
-                self.connect_btn.setText("连接直播间")
-                self.connect_btn.setEnabled(True)
-                QMessageBox.warning(self, "连接失败", "无法连接到直播间，请检查房间号是否正确")
-
-    def handle_new_danmu(self, danmu):
-        self.danmu_received.emit(danmu)
-
-        self.database.save_danmu(danmu)
-
-        self.display_danmu(danmu)
-
-        reply = self.reply_engine.process_danmu(danmu)
-        if reply:
-            danmu['replied'] = True
-
-        self.update_statistics()
-
-    def display_danmu(self, danmu):
-        item = QListWidgetItem()
-        widget = DanmuItem(danmu)
-        item.setSizeHint(QSize(widget.width(), 70))
-
-        self.danmu_list_widget.addItem(item)
-        self.danmu_list_widget.setItemWidget(item, widget)
-
-        if self.danmu_list_widget.count() > self.max_danmu_display:
-            self.danmu_list_widget.takeItem(0)
-
-        self.danmu_list.append(danmu)
-
-    def handle_status_change(self, message, is_connected):
-        self.status_changed.emit(message, is_connected)
-
-        if is_connected:
-            self.status_indicator.set_status(True)
-            self.status_label.setText(f"状态: {message}")
-            self.connect_btn.setText("断开连接")
-            self.connect_btn.setEnabled(True)
-            self.room_id_input.setEnabled(False)
-            self.statusBar.showMessage("已连接到直播间")
-        else:
-            self.status_indicator.set_status(False)
-            self.status_label.setText(f"状态: {message}")
-            self.connect_btn.setText("连接直播间")
-            self.connect_btn.setEnabled(True)
-            self.room_id_input.setEnabled(True)
-            self.statusBar.showMessage(message)
-
-    def handle_auto_reply(self, reply, danmu):
-        self.douyin_api.send_reply(reply)
-
-        self.statusBar.showMessage(f"已发送回复: {reply}")
-
-    def toggle_auto_reply(self, state):
-        if state == Qt.CheckState.Checked.value:
-            self.reply_engine.enable()
-            self.statusBar.showMessage("自动回复已启用")
-        else:
-            self.reply_engine.disable()
-            self.statusBar.showMessage("自动回复已禁用")
-
-    def show_add_rule_dialog(self):
-        dialog = AddRuleDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            rule_data = dialog.get_rule_data()
-            if self.reply_engine.add_rule(
-                rule_data['keyword'],
-                rule_data['replies'],
-                rule_data['match_type']
-            ):
-                self.update_rules_display()
-                QMessageBox.information(self, "成功", "规则添加成功")
-            else:
-                QMessageBox.warning(self, "失败", "规则添加失败")
-
-    def update_rules_display(self):
-        self.rules_list.clear()
-        rules = self.reply_engine.get_rules()
-        for rule in rules:
-            status = "✓" if rule.get('enabled', True) else "✗"
-            text = f"{status} {rule['keyword']} → {rule['replies'][0] if rule['replies'] else ''}"
-            self.rules_list.addItem(text)
-
-    def delete_selected_rule(self):
-        current_item = self.rules_list.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "提示", "请先选择要删除的规则")
-            return
-
-        row = self.rules_list.row(current_item)
-        rules = self.reply_engine.get_rules()
-
-        if 0 <= row < len(rules):
-            rule_id = rules[row]['id']
-            if self.reply_engine.delete_rule(rule_id):
-                self.update_rules_display()
-                QMessageBox.information(self, "成功", "规则删除成功")
-            else:
-                QMessageBox.warning(self, "失败", "规则删除失败")
-
-    def clear_danmu(self):
-        self.danmu_list_widget.clear()
-        self.danmu_list.clear()
-        self.database.clear_danmu_history()
-        self.update_statistics()
-        self.statusBar.showMessage("弹幕列表已清空")
-
-    def export_history(self):
-        from PyQt6.QtWidgets import QFileDialog
-        import json
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "导出历史", "", "JSON Files (*.json);;All Files (*)"
+        self.db_path = Path(__file__).parent / "data" / "danmu.db"
+        self.db_path.parent.mkdir(exist_ok=True)
+        self.danmu_history = deque(maxlen=1000)
+        self.rules = []
+        self.reply_history = []
+        self._load_data()
+
+    def _load_data(self):
+        history_file = self.db_path.parent / "history.json"
+        rules_file = self.db_path.parent / "rules.json"
+
+        if history_file.exists():
+            try:
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.danmu_history = deque(data.get('danmu', [])[-1000:], maxlen=1000)
+                    self.reply_history = data.get('replies', [])
+            except:
+                pass
+
+        if rules_file.exists():
+            try:
+                with open(rules_file, 'r', encoding='utf-8') as f:
+                    self.rules = json.load(f)
+            except:
+                self.rules = []
+
+    def _save_data(self):
+        history_file = self.db_path.parent / "history.json"
+        rules_file = self.db_path.parent / "rules.json"
+
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'danmu': list(self.danmu_history),
+                'replies': self.reply_history[-100:]
+            }, f, ensure_ascii=False, indent=2)
+
+        with open(rules_file, 'w', encoding='utf-8') as f:
+            json.dump(self.rules, f, ensure_ascii=False, indent=2)
+
+    def save_danmu(self, danmu: Dict):
+        self.danmu_history.append(danmu)
+        self._save_data()
+
+    def save_reply(self, danmu_id: str, reply: str):
+        self.reply_history.append({
+            'danmu_id': danmu_id,
+            'reply': reply,
+            'time': datetime.now().strftime('%H:%M:%S')
+        })
+        self._save_data()
+
+    def add_rule(self, keyword: str, reply: str):
+        rule_id = str(uuid.uuid4())[:8]
+        self.rules.append({
+            'id': rule_id,
+            'keyword': keyword,
+            'reply': reply,
+            'enabled': True
+        })
+        self._save_data()
+        return True
+
+    def delete_rule(self, rule_id: str):
+        self.rules = [r for r in self.rules if r['id'] != rule_id]
+        self._save_data()
+
+    def get_rules(self):
+        return self.rules
+
+    def get_recent_danmu(self, count: int = 50):
+        return list(self.danmu_history)[-count:]
+
+class DouyinLive:
+    def __init__(self, console):
+        self.console = console
+        self.room_id = None
+        self.ws = None
+        self.is_connected = False
+        self.running = False
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': 'https://live.douyin.com/',
+        }
+        self.on_danmu = None
+        self.reply_queue = []
+        self.reply_interval = 2
+        self.last_reply_time = {}
+
+    def extract_room_id(self, input_str: str) -> Optional[str]:
+        input_str = input_str.strip()
+
+        if input_str.isdigit() and len(input_str) >= 15:
+            return input_str
+
+        match = re.search(r'/(\d{15,})', input_str)
+        if match:
+            return match.group(1)
+
+        match = re.search(r'room_id=(\d+)', input_str)
+        if match:
+            return match.group(1)
+
+        match = re.search(r'(\d{15,})', input_str)
+        if match:
+            return match.group(1)
+
+        return None
+
+    def connect(self, room_id: str) -> bool:
+        room_id = self.extract_room_id(room_id)
+        if not room_id:
+            return False
+
+        self.room_id = room_id
+        self.console.print(f"[cyan]正在连接直播间...[/cyan]")
+
+        try:
+            params = {'room_id': room_id, 'type': '0'}
+            response = requests.get(
+                'https://live.douyin.com/webcast/im/fetch/',
+                params=params,
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return False
+
+            data = response.json()
+            ws_link = data.get('data', {}).get('ws_link')
+
+            if not ws_link:
+                return False
+
+            self._connect_websocket(ws_link)
+            return True
+
+        except Exception as e:
+            self.console.print(f"[red]连接失败: {e}[/red]")
+            return False
+
+    def _connect_websocket(self, ws_link: str):
+        self.running = True
+        self.is_connected = True
+
+        def on_message(ws, message):
+            try:
+                msg_data = json.loads(message)
+                self._handle_message(msg_data)
+            except:
+                pass
+
+        def on_error(ws, error):
+            pass
+
+        def on_close(ws, *args):
+            self.is_connected = False
+
+        def on_open(ws):
+            self.is_connected = True
+            threading.Thread(target=self._heartbeat, args=(ws,), daemon=True).start()
+            threading.Thread(target=self._reply_worker, args=(ws,), daemon=True).start()
+
+        self.ws = websocket.WebSocketApp(
+            ws_link,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close,
+            on_open=on_open
         )
 
-        if file_path:
-            history = self.database.get_danmu_history(limit=1000)
+        thread = threading.Thread(target=self.ws.run_forever, daemon=True)
+        thread.start()
+
+    def _heartbeat(self, ws):
+        while self.running and self.is_connected:
             try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(history, f, ensure_ascii=False, indent=2)
-                QMessageBox.information(self, "成功", f"历史记录已导出到:\n{file_path}")
-            except Exception as e:
-                QMessageBox.warning(self, "失败", f"导出失败:\n{str(e)}")
+                ws.send(json.dumps({
+                    'type': 'heartbeat',
+                    'data': {'room_id': self.room_id, 'timestamp': int(time.time() * 1000)}
+                }))
+                time.sleep(20)
+            except:
+                break
 
-    def update_statistics(self):
-        stats = self.database.get_statistics()
-        self.danmu_count_label.setText(f"弹幕数: {stats['total_danmu']}")
-        self.reply_count_label.setText(f"回复数: {stats['total_replies']}")
+    def _reply_worker(self, ws):
+        while self.running:
+            if self.reply_queue:
+                content = self.reply_queue.pop(0)
+                try:
+                    ws.send(json.dumps({
+                        'type': 'chat',
+                        'data': {'content': content, 'room_id': self.room_id}
+                    }))
+                    time.sleep(self.reply_interval)
+                except:
+                    pass
+            else:
+                time.sleep(0.5)
 
-    def closeEvent(self, event):
-        if self.douyin_api.is_connected:
-            self.douyin_api.disconnect()
-        event.accept()
+    def _handle_message(self, msg_data: Dict):
+        msg_type = msg_data.get('type', '')
 
-class AddRuleDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("添加回复规则")
-        self.setFixedSize(450, 350)
-        self.init_ui()
+        if msg_type == 'chat':
+            danmu = {
+                'id': str(msg_data.get('msg_id', '')),
+                'user': msg_data.get('user', {}).get('nickname', '匿名'),
+                'content': msg_data.get('content', ''),
+                'time': datetime.now().strftime('%H:%M:%S'),
+                'replied': False
+            }
+            if self.on_danmu:
+                self.on_danmu(danmu)
 
-    def init_ui(self):
-        layout = QFormLayout(self)
-        layout.setSpacing(15)
+        elif msg_type == 'member':
+            join_info = {
+                'id': f"join_{msg_data.get('user', {}).get('id', '')}",
+                'user': msg_data.get('user', {}).get('nickname', '访客'),
+                'content': '进入了直播间',
+                'time': datetime.now().strftime('%H:%M:%S'),
+                'replied': False,
+                'is_join': True
+            }
+            if self.on_danmu:
+                self.on_danmu(join_info)
 
-        self.keyword_input = QLineEdit()
-        self.keyword_input.setPlaceholderText("输入触发关键词")
+    def send_reply(self, content: str):
+        if self.is_connected:
+            self.reply_queue.append(content)
+            return True
+        return False
 
-        self.match_type = QComboBox()
-        self.match_type.addItems(["包含", "完全匹配", "正则表达式"])
+    def disconnect(self):
+        self.running = False
+        if self.ws:
+            self.ws.close()
+        self.is_connected = False
 
-        self.reply_input = QTextEdit()
-        self.reply_input.setPlaceholderText("输入回复内容（支持多条，用|分隔）")
-        self.reply_input.setMaximumHeight(100)
+class AutoReply:
+    def __init__(self, database):
+        self.database = database
+        self.enabled = True
 
-        self.add_btn = QPushButton("添加")
-        self.add_btn.clicked.connect(self.validate_and_accept)
+    def match_and_reply(self, danmu: Dict) -> Optional[str]:
+        if not self.enabled or danmu.get('is_join'):
+            return None
 
-        self.cancel_btn = QPushButton("取消")
-        self.cancel_btn.clicked.connect(self.reject)
+        content = danmu.get('content', '').lower()
 
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(self.add_btn)
-        btn_layout.addWidget(self.cancel_btn)
+        for rule in self.database.get_rules():
+            if not rule.get('enabled', True):
+                continue
 
-        layout.addRow("关键词:", self.keyword_input)
-        layout.addRow("匹配方式:", self.match_type)
-        layout.addRow("回复内容:", self.reply_input)
-        layout.addRow(btn_layout)
+            keyword = rule.get('keyword', '').lower()
 
-    def validate_and_accept(self):
-        keyword = self.keyword_input.text().strip()
-        reply_text = self.reply_input.toPlainText().strip()
+            if keyword in content:
+                reply = rule.get('reply', '')
+                if reply:
+                    self.database.save_reply(danmu.get('id', ''), reply)
+                    return reply
 
-        if not keyword:
-            QMessageBox.warning(self, "提示", "请输入关键词")
+        return None
+
+class CLIApp:
+    def __init__(self):
+        self.console = Console() if HAS_RICH else None
+        self.database = Database()
+        self.douyin = DouyinLive(self.console)
+        self.auto_reply = AutoReply(self.database)
+
+        self.danmu_buffer = deque(maxlen=100)
+        self.running = False
+        self.danmu_count = 0
+        self.reply_count = 0
+
+    def print(self, msg, style=''):
+        if self.console:
+            if style:
+                self.console.print(msg, style=style)
+            else:
+                print(msg)
+        else:
+            print(msg)
+
+    def print_banner(self):
+        banner = """
+╔═══════════════════════════════════════════════════════╗
+║          抖音直播间弹幕助手 v1.0 (CLI)                  ║
+║                                                       ║
+║  实时读取弹幕 | 自动回复 | 规则管理                    ║
+╚═══════════════════════════════════════════════════════╝
+        """
+        self.print(banner)
+
+    def show_menu(self):
+        menu = """
+操作菜单:
+  1. 连接直播间
+  2. 添加回复规则
+  3. 查看规则列表
+  4. 删除规则
+  5. 开关自动回复
+  6. 查看弹幕历史
+  7. 导出数据
+  0. 退出程序
+        """
+        self.print(menu)
+
+    def connect_room(self):
+        self.print("\n[提示] 请输入直播间链接或房间号", style='cyan')
+        room_id = input("> ").strip()
+
+        if not room_id:
+            self.print("[错误] 房间号不能为空", style='red')
             return
 
-        if not reply_text:
-            QMessageBox.warning(self, "提示", "请输入回复内容")
+        if self.douyin.connect(room_id):
+            self.print("[成功] 已连接到直播间!", style='green')
+            self.print("[提示] 按 Ctrl+C 可以暂停监控，返回菜单", style='yellow')
+            return True
+        else:
+            self.print("[错误] 连接失败，请检查房间号是否正确", style='red')
+            return False
+
+    def add_rule(self):
+        self.print("\n[添加回复规则]", style='cyan')
+        keyword = input("请输入触发关键词: ").strip()
+        reply = input("请输入回复内容: ").strip()
+
+        if not keyword or not reply:
+            self.print("[错误] 关键词和回复内容都不能为空", style='red')
             return
 
-        self.accept()
+        if self.database.add_rule(keyword, reply):
+            self.print("[成功] 规则添加成功!", style='green')
+        else:
+            self.print("[错误] 规则添加失败", style='red')
 
-    def get_rule_data(self):
-        match_types = ['contain', 'exact', 'regex']
-        replies = [r.strip() for r in self.reply_input.toPlainText().split('|') if r.strip()]
+    def list_rules(self):
+        rules = self.database.get_rules()
 
-        return {
-            'keyword': self.keyword_input.text().strip(),
-            'match_type': match_types[self.match_type.currentIndex()],
-            'replies': replies
+        if not rules:
+            self.print("\n[提示] 暂无回复规则", style='yellow')
+            return
+
+        self.print(f"\n{'='*60}", style='cyan')
+        self.print(f"{'规则列表':^60}", style='bold cyan')
+        self.print(f"{'='*60}", style='cyan')
+
+        for i, rule in enumerate(rules, 1):
+            status = "[启用]" if rule.get('enabled', True) else "[禁用]"
+            self.print(f"\n{i}. {status}")
+            self.print(f"   关键词: {rule.get('keyword', '')}")
+            self.print(f"   回复: {rule.get('reply', '')}")
+            self.print(f"   ID: {rule.get('id', '')}")
+
+    def delete_rule(self):
+        rules = self.database.get_rules()
+
+        if not rules:
+            self.print("\n[提示] 暂无回复规则", style='yellow')
+            return
+
+        self.list_rules()
+        self.print("\n请输入要删除的规则编号或ID: ", style='cyan', end='')
+
+        choice = input().strip()
+
+        rule_id = None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(rules):
+                rule_id = rules[idx]['id']
+        else:
+            rule_id = choice
+
+        if rule_id:
+            self.database.delete_rule(rule_id)
+            self.print("[成功] 规则已删除", style='green')
+        else:
+            self.print("[错误] 无效的选择", style='red')
+
+    def toggle_auto_reply(self):
+        self.auto_reply.enabled = not self.auto_reply.enabled
+        status = "启用" if self.auto_reply.enabled else "禁用"
+        self.print(f"[提示] 自动回复已{status}", style='green' if self.auto_reply.enabled else 'yellow')
+
+    def show_history(self):
+        history = self.database.get_recent_danmu(50)
+
+        if not history:
+            self.print("\n[提示] 暂无弹幕历史", style='yellow')
+            return
+
+        self.print(f"\n{'='*60}", style='cyan')
+        self.print(f"{'弹幕历史 (最近50条)':^60}", style='bold cyan')
+        self.print(f"{'='*60}", style='cyan')
+
+        for danmu in reversed(history):
+            if danmu.get('is_join'):
+                self.print(f"[{danmu['time']}] {danmu['user']} {danmu['content']}", style='dim')
+            else:
+                replied = "[已回复]" if danmu.get('replied') else ""
+                self.print(f"[{danmu['time']}] {danmu['user']}: {danmu['content']} {replied}")
+
+    def export_data(self):
+        self.print("\n正在导出数据...", style='cyan')
+
+        export_file = Path(__file__).parent / "data" / f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+        data = {
+            'danmu_history': list(self.database.danmu_history),
+            'reply_history': self.database.reply_history,
+            'rules': self.database.rules,
+            'export_time': datetime.now().isoformat()
         }
 
+        try:
+            with open(export_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.print(f"[成功] 数据已导出到: {export_file}", style='green')
+        except Exception as e:
+            self.print(f"[错误] 导出失败: {e}", style='red')
+
+    def start_monitoring(self):
+        self.running = True
+        self.danmu_count = 0
+        self.reply_count = 0
+
+        def on_danmu(danmu):
+            self.database.save_danmu(danmu)
+            self.danmu_count += 1
+
+            if not danmu.get('is_join'):
+                if self.console:
+                    self.console.print(f"[{danmu['time']}] {danmu['user']}: {danmu['content']}")
+
+                reply = self.auto_reply.match_and_reply(danmu)
+                if reply:
+                    self.douyin.send_reply(reply)
+                    self.reply_count += 1
+                    danmu['replied'] = True
+                    if self.console:
+                        self.console.print(f"    [自动回复] {reply}", style='green')
+
+        self.douyin.on_danmu = on_danmu
+
+        self.print("\n[监控中] 正在监听弹幕...", style='bold green')
+        self.print(f"[统计] 弹幕: {self.danmu_count} | 回复: {self.reply_count} | 自动回复: {'开启' if self.auto_reply.enabled else '关闭'}", style='dim')
+        self.print("按 Ctrl+C 停止监听\n", style='dim')
+
+        try:
+            while self.running and self.douyin.is_connected:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.stop_monitoring()
+
+    def stop_monitoring(self):
+        self.running = False
+        self.douyin.disconnect()
+        self.print("\n[提示] 监控已停止", style='yellow')
+        self.print(f"[统计] 本次共捕获 {self.danmu_count} 条弹幕，发送 {self.reply_count} 条回复", style='cyan')
+
+    def run(self):
+        self.print_banner()
+
+        while True:
+            self.show_menu()
+            choice = input("\n请选择操作 (0-7): ").strip()
+
+            if choice == '1':
+                if self.connect_room():
+                    self.start_monitoring()
+
+            elif choice == '2':
+                self.add_rule()
+
+            elif choice == '3':
+                self.list_rules()
+
+            elif choice == '4':
+                self.delete_rule()
+
+            elif choice == '5':
+                self.toggle_auto_reply()
+
+            elif choice == '6':
+                self.show_history()
+
+            elif choice == '7':
+                self.export_data()
+
+            elif choice == '0':
+                if self.douyin.is_connected:
+                    self.douyin.disconnect()
+                self.print("\n[提示] 感谢使用，再见!", style='cyan')
+                break
+
+            else:
+                self.print("\n[错误] 无效的选择，请输入 0-7", style='red')
+
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-
-    window = MainWindow()
-    window.show()
-
-    sys.exit(app.exec())
+    try:
+        app = CLIApp()
+        app.run()
+    except KeyboardInterrupt:
+        print("\n\n[提示] 程序已退出")
+        sys.exit(0)

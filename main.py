@@ -107,10 +107,11 @@ class DouyinLive:
         self.is_connected = False
         self.running = False
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Referer': 'https://live.douyin.com/',
         }
+        self.cookies = {}
         self.on_danmu = None
         self.reply_queue = []
         self.reply_interval = 2
@@ -136,35 +137,79 @@ class DouyinLive:
 
         return None
 
-    def connect(self, room_id: str) -> bool:
+    def set_cookies(self, cookie_str: str):
+        """设置Cookie"""
+        self.cookies = {}
+        for item in cookie_str.split(';'):
+            item = item.strip()
+            if '=' in item:
+                key, value = item.split('=', 1)
+                self.cookies[key.strip()] = value.strip()
+
+    def connect(self, room_id: str, cookie_str: str = None) -> bool:
         room_id = self.extract_room_id(room_id)
         if not room_id:
             return False
 
         self.room_id = room_id
+
+        if cookie_str:
+            self.set_cookies(cookie_str)
+
         self.console.print(f"[cyan]正在连接直播间...[/cyan]")
 
         try:
-            params = {'room_id': room_id, 'type': '0'}
+            params = {
+                'room_id': room_id,
+                'user_id': '',
+                'type': '0',
+                'internal_ext': '',
+                'live_timing': '1',
+            }
+
+            headers = self.headers.copy()
+            if self.cookies:
+                cookie_str = '; '.join([f"{k}={v}" for k, v in self.cookies.items()])
+                headers['Cookie'] = cookie_str
+
             response = requests.get(
                 'https://live.douyin.com/webcast/im/fetch/',
                 params=params,
-                headers=self.headers,
-                timeout=10
+                headers=headers,
+                timeout=15
             )
 
             if response.status_code != 200:
+                self.console.print(f"[red]HTTP错误: {response.status_code}[/red]")
                 return False
 
-            data = response.json()
+            if not response.text:
+                self.console.print(f"[red]服务器返回空响应[/red]")
+                self.console.print(f"[yellow]提示: 可能需要登录认证，请输入您的Cookie[/yellow]")
+                return False
+
+            try:
+                data = response.json()
+            except:
+                self.console.print(f"[red]JSON解析失败[/red]")
+                return False
+
             ws_link = data.get('data', {}).get('ws_link')
 
             if not ws_link:
+                self.console.print(f"[red]未获取到WebSocket链接[/red]")
+                self.console.print(f"[yellow]提示: 抖音API可能需要登录，请确保Cookie有效[/yellow]")
                 return False
 
             self._connect_websocket(ws_link)
             return True
 
+        except requests.exceptions.Timeout:
+            self.console.print(f"[red]连接超时[/red]")
+            return False
+        except requests.exceptions.RequestException as e:
+            self.console.print(f"[red]网络错误: {e}[/red]")
+            return False
         except Exception as e:
             self.console.print(f"[red]连接失败: {e}[/red]")
             return False
@@ -302,13 +347,29 @@ class CLIApp:
         self.running = False
         self.danmu_count = 0
         self.reply_count = 0
+        self.saved_cookie = self._load_cookie()
 
-    def print(self, msg, style=''):
+    def _load_cookie(self):
+        cookie_file = Path(__file__).parent / "data" / "cookie.txt"
+        if cookie_file.exists():
+            try:
+                return cookie_file.read_text().strip()
+            except:
+                pass
+        return None
+
+    def _save_cookie(self, cookie_str):
+        cookie_file = Path(__file__).parent / "data" / "cookie.txt"
+        cookie_file.parent.mkdir(exist_ok=True)
+        cookie_file.write_text(cookie_str)
+
+    def print(self, msg='', style=''):
         if self.console:
             if style:
                 self.console.print(msg, style=style)
             else:
-                print(msg)
+                if msg:
+                    self.console.print(msg)
         else:
             print(msg)
 
@@ -332,6 +393,7 @@ class CLIApp:
   5. 开关自动回复
   6. 查看弹幕历史
   7. 导出数据
+  8. 设置Cookie
   0. 退出程序
         """
         self.print(menu)
@@ -344,12 +406,32 @@ class CLIApp:
             self.print("[错误] 房间号不能为空", style='red')
             return
 
-        if self.douyin.connect(room_id):
+        cookie_str = None
+        if self.saved_cookie:
+            self.print(f"[提示] 已加载保存的Cookie", style='green')
+            use_saved = input("使用保存的Cookie? (Y/n): ").strip().lower()
+            if use_saved != 'n':
+                cookie_str = self.saved_cookie
+
+        if not cookie_str:
+            self.print("\n[提示] 如连接失败，请先设置Cookie (选项8)", style='yellow')
+            try_cookie = input("是否继续尝试连接? (y/N): ").strip().lower()
+            if try_cookie != 'y':
+                return
+
+        if self.douyin.connect(room_id, cookie_str):
             self.print("[成功] 已连接到直播间!", style='green')
             self.print("[提示] 按 Ctrl+C 可以暂停监控，返回菜单", style='yellow')
             return True
         else:
-            self.print("[错误] 连接失败，请检查房间号是否正确", style='red')
+            self.print("[错误] 连接失败", style='red')
+            self.print("\n[解决方案]", style='yellow')
+            self.print("1. 请确保直播间正在直播中")
+            self.print("2. 请尝试设置Cookie (选项8)")
+            self.print("   获取方法:")
+            self.print("   - 打开抖音直播网页版")
+            self.print("   - 登录后按F12打开开发者工具")
+            self.print("   - 复制Network中的Cookie值")
             return False
 
     def add_rule(self):
@@ -452,6 +534,30 @@ class CLIApp:
         except Exception as e:
             self.print(f"[错误] 导出失败: {e}", style='red')
 
+    def set_cookie(self):
+        self.print("\n[设置Cookie]", style='cyan')
+        self.print("获取Cookie的方法:", style='yellow')
+        self.print("1. 打开浏览器，访问 https://live.douyin.com/")
+        self.print("2. 登录您的抖音账号")
+        self.print("3. 按F12打开开发者工具")
+        self.print("4. 切换到Network(网络)标签")
+        self.print("5. 刷新页面，找到任意请求")
+        self.print("6. 在请求头(Headers)中复制Cookie的值")
+        self.print()
+
+        cookie_str = input("请输入Cookie (直接回车清除): ").strip()
+
+        if cookie_str:
+            self._save_cookie(cookie_str)
+            self.saved_cookie = cookie_str
+            self.print("[成功] Cookie已保存!", style='green')
+        else:
+            cookie_file = Path(__file__).parent / "data" / "cookie.txt"
+            if cookie_file.exists():
+                cookie_file.unlink()
+            self.saved_cookie = None
+            self.print("[提示] Cookie已清除", style='yellow')
+
     def start_monitoring(self):
         self.running = True
         self.danmu_count = 0
@@ -496,7 +602,7 @@ class CLIApp:
 
         while True:
             self.show_menu()
-            choice = input("\n请选择操作 (0-7): ").strip()
+            choice = input("\n请选择操作 (0-8): ").strip()
 
             if choice == '1':
                 if self.connect_room():
@@ -520,6 +626,9 @@ class CLIApp:
             elif choice == '7':
                 self.export_data()
 
+            elif choice == '8':
+                self.set_cookie()
+
             elif choice == '0':
                 if self.douyin.is_connected:
                     self.douyin.disconnect()
@@ -527,7 +636,7 @@ class CLIApp:
                 break
 
             else:
-                self.print("\n[错误] 无效的选择，请输入 0-7", style='red')
+                self.print("\n[错误] 无效的选择，请输入 0-8", style='red')
 
 if __name__ == '__main__':
     try:

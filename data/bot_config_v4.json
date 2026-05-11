@@ -1,0 +1,46 @@
+{
+  "cookie": "",
+  "room_id": "",
+  "rules": [
+    {
+      "name": "点歌",
+      "triggers": [
+        "点歌",
+        "点一首",
+        "想听"
+      ],
+      "pattern": "点歌\\s*(.+?)(?:\\s+[\\-–]\\s*(.+))?$|点一首\\s*(.+?)(?:\\s+[\\-–]\\s*(.+))?$",
+      "module": "music_player",
+      "params": {},
+      "reply": "",
+      "enabled": true
+    },
+    {
+      "name": "查订单",
+      "triggers": [
+        "查订单",
+        "订单",
+        "发货了吗"
+      ],
+      "pattern": ".*",
+      "module": "query_order",
+      "params": {},
+      "reply": "",
+      "enabled": true
+    },
+    {
+      "name": "提醒主播",
+      "triggers": [
+        "提醒",
+        "记得"
+      ],
+      "pattern": "提醒.*?(.+)",
+      "module": "reminder",
+      "params": {},
+      "reply": "",
+      "enabled": true
+    }
+  ],
+  "auto_reply": true,
+  "reply_interval": 2
+}

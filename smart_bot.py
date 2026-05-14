@@ -40,7 +40,6 @@ class Config:
         self.data.setdefault('auto_reply', True)
         self.data.setdefault('reply_interval', 2)
         self.data.setdefault('sillytavern_url', 'http://localhost:8000')
-        self.data.setdefault('use_sillytavern', False)
 
     def save(self):
         with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -174,8 +173,64 @@ class DouyinDanmu:
             self.ws.close()
         self.connected = False
 
+class SillyTavernBridge:
+    """SillyTavern桥接器"""
+
+    def __init__(self, config):
+        self.config = config
+        self.base_url = config.get('sillytavern_url', 'http://localhost:8000').rstrip('/')
+        self.session = requests.Session()
+        self.enabled = True
+        self.stats = {'sent': 0, 'failed': 0}
+
+    def set_url(self, url):
+        self.base_url = url.rstrip('/')
+        self.config.set('sillytavern_url', url)
+
+    def send_message(self, content, user=''):
+        """发送消息到SillyTavern"""
+        if not self.enabled:
+            return False, "SillyTavern未启用"
+
+        try:
+            formatted = f"【{user}】{content}" if user else content
+
+            endpoints = [
+                f"{self.base_url}/api/backends/chat",
+                f"{self.base_url}/api/chat",
+                f"{self.base_url}/api/send",
+            ]
+
+            for endpoint in endpoints:
+                try:
+                    response = self.session.post(
+                        endpoint,
+                        json={'content': formatted, 'name': '弹幕用户'},
+                        headers={'Content-Type': 'application/json'},
+                        timeout=30
+                    )
+                    if response.status_code in [200, 201]:
+                        self.stats['sent'] += 1
+                        return True, "已转发到SillyTavern"
+                except:
+                    continue
+
+            self.stats['failed'] += 1
+            return False, "转发失败"
+
+        except Exception as e:
+            self.stats['failed'] += 1
+            return False, f"转发失败: {e}"
+
+    def check_connection(self):
+        try:
+            response = self.session.get(f"{self.base_url}/api/status", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+
 class ActionModules:
-    """动作模块基类"""
+    """动作模块"""
 
     @staticmethod
     def music_player(params, context):
@@ -186,13 +241,11 @@ class ActionModules:
         result = {
             'success': True,
             'action': 'music_player',
-            'params': params,
             'message': '',
             'reply': ''
         }
 
         if not song:
-            result['success'] = False
             result['reply'] = '没听清歌名，能再说一遍吗？'
             return result
 
@@ -207,11 +260,10 @@ class ActionModules:
 
     @staticmethod
     def query_order(params, context):
-        """查询订单模块"""
+        """查询订单"""
         result = {
             'success': True,
             'action': 'query_order',
-            'params': params,
             'message': '📦 查询订单',
             'reply': f'{context["user"]}，请私信客服查询订单哦~'
         }
@@ -219,153 +271,42 @@ class ActionModules:
 
     @staticmethod
     def reminder(params, context):
-        """提醒模块"""
-        reminder_text = params.get('text', '')
+        """提醒"""
         result = {
             'success': True,
             'action': 'reminder',
-            'params': params,
-            'message': f"⏰ 提醒: {reminder_text}",
+            'message': f"⏰ 提醒已记录",
             'reply': f'好的~ 主播会注意的 ({context["user"]})'
         }
         return result
 
     @staticmethod
     def custom(params, context):
-        """自定义回复模块"""
+        """自定义回复"""
         reply = params.get('reply', '收到！')
         return {
             'success': True,
             'action': 'custom',
-            'params': params,
-            'message': '💬 自定义回复',
+            'message': '💬 回复',
             'reply': reply
         }
 
     @staticmethod
-    def sillytavern(params, context):
-        """SillyTavern转发模块 - 将弹幕转发到SillyTavern触发AI回复"""
-        st_url = params.get('url', context.get('st_url', 'http://localhost:8000'))
-        prefix = params.get('prefix', '【{user}】{content}')
-
-        content = context.get('content', '')
+    def forward_st(params, context, st_bridge):
+        """转发到SillyTavern"""
+        original_content = context.get('content', '')
         user = context.get('user', '用户')
-
-        formatted_msg = prefix.format(user=user, content=content)
 
         result = {
             'success': True,
-            'action': 'sillytavern',
-            'params': params,
-            'message': f"🤖 转发到SillyTavern: {formatted_msg}",
+            'action': 'forward_st',
+            'message': '🤖 转发到SillyTavern',
             'reply': '',
-            'forward': True,
-            'forward_url': st_url,
-            'forward_data': {
-                'content': formatted_msg,
-                'name': '弹幕用户',
-                'is_system': False
-            }
+            'need_forward': True,
+            'forward_content': original_content,
+            'forward_user': user
         }
         return result
-
-    @staticmethod
-    def sillytavern_auto(params, context):
-        """SillyTavern智能转发 - 自动判断是否转发"""
-        content = context.get('content', '').lower()
-        user = context.get('user', '用户')
-
-        skip_keywords = ['点歌', '查询', '提醒', '多少钱', '怎么买']
-        for kw in skip_keywords:
-            if kw in content:
-                return {
-                    'success': True,
-                    'action': 'sillytavern_auto',
-                    'params': params,
-                    'message': f'💬 匹配到关键词"{kw}"，使用本地回复',
-                    'reply': None,
-                    'skip': True
-                }
-
-        st_url = params.get('url', context.get('st_url', 'http://localhost:8000'))
-
-        formatted_msg = f'【{user}】{content}'
-
-        return {
-            'success': True,
-            'action': 'sillytavern_auto',
-            'params': params,
-            'message': f"🤖 智能转发到SillyTavern",
-            'reply': '',
-            'forward': True,
-            'forward_url': st_url,
-            'forward_data': {
-                'content': formatted_msg,
-                'name': '弹幕用户',
-                'is_system': False
-            }
-        }
-
-class SillyTavernBridge:
-    """SillyTavern桥接器"""
-
-    def __init__(self, config):
-        self.config = config
-        self.base_url = config.get('sillytavern_url', 'http://localhost:8000').rstrip('/')
-        self.session = requests.Session()
-        self.enabled = False
-        self.stats = {'sent': 0, 'failed': 0}
-
-    def enable(self):
-        self.enabled = True
-
-    def disable(self):
-        self.enabled = False
-
-    def set_url(self, url):
-        self.base_url = url.rstrip('/')
-        self.config.set('sillytavern_url', url)
-
-    def send_message(self, content):
-        """发送消息到SillyTavern"""
-        if not self.enabled:
-            return False, "SillyTavern未启用"
-
-        try:
-            endpoints = [
-                f"{self.base_url}/api/backends/chat",
-                f"{self.base_url}/api/chat",
-                f"{self.base_url}/api/send",
-            ]
-
-            for endpoint in endpoints:
-                try:
-                    response = self.session.post(
-                        endpoint,
-                        json={'content': content, 'name': '弹幕用户'},
-                        headers={'Content-Type': 'application/json'},
-                        timeout=30
-                    )
-                    if response.status_code in [200, 201]:
-                        self.stats['sent'] += 1
-                        return True, "发送成功"
-                except:
-                    continue
-
-            self.stats['failed'] += 1
-            return False, "所有端点均失败"
-
-        except Exception as e:
-            self.stats['failed'] += 1
-            return False, f"发送失败: {e}"
-
-    def check_connection(self):
-        """检查连接"""
-        try:
-            response = self.session.get(f"{self.base_url}/api/status", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
 
 class SmartRule:
     """智能规则"""
@@ -377,7 +318,6 @@ class SmartRule:
         self.pattern = rule_data.get('pattern', '')
         self.module = rule_data.get('module', 'custom')
         self.params = rule_data.get('params', {})
-        self.reply = rule_data.get('reply', '')
         self.enabled = rule_data.get('enabled', True)
 
     def match(self, content):
@@ -402,6 +342,7 @@ class SmartRule:
 
     def parse(self, content):
         params = {}
+
         if not self.pattern:
             return params
 
@@ -419,26 +360,24 @@ class SmartRule:
 
         return params
 
-    def execute(self, context):
+    def execute(self, context, st_bridge=None):
         module_func = getattr(ActionModules, self.module, None)
 
         if module_func:
-            context_with_params = {**context, 'st_url': self.params.get('url', 'http://localhost:8000')}
-            result = module_func(self.params, context_with_params)
-            if result.get('reply'):
-                return result
-            elif self.reply:
-                result['reply'] = self.reply
-                return result
-            return result
+            if self.module == 'forward_st' and st_bridge:
+                result = module_func(self.params, context, st_bridge)
+            else:
+                result = module_func(self.params, context)
 
-        if self.reply:
-            return {
-                'success': True,
-                'action': self.module,
-                'message': '',
-                'reply': self.reply
-            }
+            if result.get('need_forward') and st_bridge:
+                success, msg = st_bridge.send_message(
+                    result.get('forward_content', ''),
+                    result.get('forward_user', '')
+                )
+                result['forward_success'] = success
+                result['forward_msg'] = msg
+
+            return result
 
         return {'success': False, 'reply': ''}
 
@@ -471,7 +410,6 @@ class RobotPanel:
                 'pattern': rule.pattern,
                 'module': rule.module,
                 'params': rule.params,
-                'reply': rule.reply,
                 'enabled': rule.enabled
             })
         self.config.set('rules', rules_data)
@@ -481,10 +419,9 @@ class RobotPanel:
             {
                 'name': '点歌',
                 'triggers': ['点歌', '点一首', '想听'],
-                'pattern': r'点歌\s*(.+?)(?:\s*[-–]\s*(.+))?$|点一首\s*(.+?)(?:\s*[-–]\s*(.+))?$',
+                'pattern': r'点(?:歌|一首)\s*(.+?)(?:\s*[-–]\s*(.+))?$',
                 'module': 'music_player',
                 'params': {},
-                'reply': '',
                 'enabled': True
             },
             {
@@ -493,26 +430,23 @@ class RobotPanel:
                 'pattern': r'.*',
                 'module': 'query_order',
                 'params': {},
-                'reply': '',
                 'enabled': True
             },
             {
                 'name': '提醒主播',
                 'triggers': ['提醒', '记得'],
-                'pattern': r'提醒.*?(.+)',
+                'pattern': r'.*',
                 'module': 'reminder',
                 'params': {},
-                'reply': '',
                 'enabled': True
             },
             {
-                'name': 'SillyTavern转发',
-                'triggers': [],
+                'name': '问问AI',
+                'triggers': ['问问AI', 'AI回答', '问一下'],
                 'pattern': r'.*',
-                'module': 'sillytavern_auto',
-                'params': {'url': 'http://localhost:8000'},
-                'reply': '',
-                'enabled': False
+                'module': 'forward_st',
+                'params': {},
+                'enabled': True
             },
         ]
 
@@ -522,15 +456,15 @@ class RobotPanel:
     def draw_panel(self):
         self.clear_screen()
 
-        st_status = "[ON]" if self.st_bridge.enabled else "[OFF]"
         auto = "ON" if self.auto_reply_enabled else "OFF"
+        st_connected = "Yes" if self.st_bridge.check_connection() else "No"
 
         width = 70
         print("=" * width)
-        print(f"|{'DOUYIN SMART BOT v4.0':^{width-20}}|{'ST:' + st_status:^18}|")
+        print(f"|{'DOUYIN SMART BOT v4.0':^{width-30}}|Auto:{auto:<5}|ST:{st_connected:<3}|")
         print("=" * width)
-        print(f"| Total: {self.stats['total']:>4}  Joins: {self.stats['joins']:>4}  Actions: {self.stats['actions']:>4}  Auto: {auto:<3} |")
-        print(f"| Forwarded: {self.stats['forwarded']:>4}  ST Sent: {self.st_bridge.stats['sent']:>4}  Failed: {self.st_bridge.stats['failed']:>4} |")
+        print(f"| Total: {self.stats['total']:>4}  Joins: {self.stats['joins']:>4}  Actions: {self.stats['actions']:>4} |")
+        print(f"| ST Forwarded: {self.stats['forwarded']:>3}  ST Sent: {self.st_bridge.stats['sent']:>3}  Failed: {self.st_bridge.stats['failed']:>3} |")
         print("-" * width)
         print(f"|{'RECENT ACTIONS':^68}|")
         print("-" * width)
@@ -538,7 +472,7 @@ class RobotPanel:
         if not self.action_log:
             print(f"|{'[ No actions yet ]':^68}|")
         else:
-            for action in list(self.action_log)[-6:]:
+            for action in list(self.action_log)[-5:]:
                 msg = action.get('msg', '')[:45]
                 reply = action.get('reply', '')[:25]
                 print(f"|\033[33m{msg}\033[0m" + " " * (45 - len(msg)) + f"\033[32m{reply}\033[0m|")
@@ -558,7 +492,7 @@ class RobotPanel:
                 print(f"|[{ts}] \033[32m{user}\033[0m: {content}{actioned}" + " " * (68 - len(f"[{ts}] {user}: {content}{actioned}")) + "|")
 
         print("-" * width)
-        print(f"| [1]Connect [2]Disc [3]Cookie [4]Rules [5]Toggle [6]Logs [7]ST Settings [0]Exit |")
+        print(f"| [1]Connect [2]Disc [3]Cookie [4]Rules [5]Toggle [6]Logs [7]ST [0]Exit |")
         print("=" * width)
 
     def handle_danmu(self, danmu):
@@ -576,8 +510,7 @@ class RobotPanel:
             'user': user,
             'user_id': danmu.get('user_id', ''),
             'content': content,
-            'time': danmu.get('time', ''),
-            'st_url': self.config.get('sillytavern_url', 'http://localhost:8000')
+            'time': danmu.get('time', '')
         }
 
         matched_rule = None
@@ -589,28 +522,26 @@ class RobotPanel:
         if matched_rule:
             params = matched_rule.parse(content)
             context['params'] = params
-            result = matched_rule.execute(context)
+            result = matched_rule.execute(context, self.st_bridge)
 
-            if result.get('forward') and self.st_bridge.enabled:
-                success, msg = self.st_bridge.send_message(result['forward_data']['content'])
-                if success:
+            danmu['actioned'] = True
+
+            if result.get('need_forward'):
+                if result.get('forward_success'):
                     self.stats['forwarded'] += 1
-                    danmu['actioned'] = True
                     self.action_log.append({
                         'rule': matched_rule.name,
                         'msg': result.get('message', matched_rule.name),
                         'reply': '[转发至SillyTavern]'
                     })
-
-            elif result.get('skip'):
-                self.action_log.append({
-                    'rule': matched_rule.name,
-                    'msg': result.get('message', matched_rule.name),
-                    'reply': '[跳过，使用本地规则]'
-                })
+                else:
+                    self.action_log.append({
+                        'rule': matched_rule.name,
+                        'msg': result.get('message', matched_rule.name),
+                        'reply': f"[转发失败]"
+                    })
 
             elif result.get('reply'):
-                danmu['actioned'] = True
                 self.stats['actions'] += 1
                 self.action_log.append({
                     'rule': matched_rule.name,
@@ -693,13 +624,13 @@ How to get:
                 for i, rule in enumerate(self.rules, 1):
                     status = "[ON]" if rule.enabled else "[OFF]"
                     triggers = ', '.join(rule.triggers[:2]) if rule.triggers else rule.pattern[:20]
-                    module_icon = "🤖" if 'sillytavern' in rule.module else "💬"
+                    module_icon = "🤖" if rule.module == 'forward_st' else "💬"
                     print(f"  {i}. {status} {module_icon} \033[36m{rule.name}\033[0m")
                     print(f"      Trigger: {triggers}")
                     print(f"      Module: {rule.module}")
 
             print("\n" + "-" * 50)
-            print(" [1] Add Rule   [2] Delete   [3] Toggle   [4] Presets   [5] ST Forward   [0] Back")
+            print(" [1] Add Rule   [2] Delete   [3] Toggle   [4] Presets   [0] Back")
             print("-" * 50)
 
             choice = input("\nChoice: ").strip()
@@ -712,8 +643,6 @@ How to get:
                 self.toggle_rule()
             elif choice == '4':
                 self.load_presets()
-            elif choice == '5':
-                self.manage_st_forward()
             elif choice == '0':
                 break
 
@@ -728,34 +657,29 @@ How to get:
         triggers = [t.strip() for t in triggers_input.split(',') if t.strip()]
 
         print("\n  Available modules:")
-        print("    1. music_player - 点歌模块")
+        print("    1. music_player - 点歌")
         print("    2. query_order - 查询订单")
-        print("    3. reminder - 提醒主播")
+        print("    3. reminder - 提醒")
         print("    4. custom - 自定义回复")
-        print("    5. sillytavern - 转发到SillyTavern")
-        print("    6. sillytavern_auto - 智能转发(跳过特定关键词)")
+        print("    5. forward_st - 转发到SillyTavern")
 
-        module_choice = input("  Select module (1-6): ").strip()
+        module_choice = input("  Select module (1-5): ").strip()
 
         module_map = {
             '1': 'music_player',
             '2': 'query_order',
             '3': 'reminder',
             '4': 'custom',
-            '5': 'sillytavern',
-            '6': 'sillytavern_auto'
+            '5': 'forward_st'
         }
         module = module_map.get(module_choice, 'custom')
 
         params = {}
-        reply = ''
 
         if module == 'custom':
             reply = input("  Reply text: ").strip()
-        elif 'sillytavern' in module:
-            st_url = input("  SillyTavern URL (default http://localhost:8000): ").strip()
-            if st_url:
-                params['url'] = st_url
+            if reply:
+                params['reply'] = reply
 
         rule = SmartRule({
             'name': name,
@@ -763,7 +687,6 @@ How to get:
             'pattern': '',
             'module': module,
             'params': params,
-            'reply': reply,
             'enabled': True
         })
 
@@ -802,10 +725,9 @@ How to get:
             {
                 'name': '点歌',
                 'triggers': ['点歌', '点一首', '想听'],
-                'pattern': r'点歌\s*(.+?)(?:\s*[-–]\s*(.+))?$|点一首\s*(.+?)(?:\s*[-–]\s*(.+))?$',
+                'pattern': r'点(?:歌|一首)\s*(.+?)(?:\s*[-–]\s*(.+))?$',
                 'module': 'music_player',
                 'params': {},
-                'reply': '',
                 'enabled': True
             },
             {
@@ -813,8 +735,7 @@ How to get:
                 'triggers': ['天气', '下雨'],
                 'pattern': r'.*',
                 'module': 'custom',
-                'params': {},
-                'reply': '天气信息请关注天气预报哦~',
+                'params': {'reply': '天气信息请关注天气预报哦~'},
                 'enabled': True
             },
             {
@@ -822,18 +743,16 @@ How to get:
                 'triggers': ['关注', '关注一下'],
                 'pattern': r'.*',
                 'module': 'custom',
-                'params': {},
-                'reply': '感谢关注！点击头像下方关注按钮哦~',
+                'params': {'reply': '感谢关注！点击头像下方关注按钮哦~'},
                 'enabled': True
             },
             {
-                'name': 'SillyTavern智能转发',
-                'triggers': [],
+                'name': '问问AI',
+                'triggers': ['问问AI', 'AI回答', '问一下'],
                 'pattern': r'.*',
-                'module': 'sillytavern_auto',
-                'params': {'url': 'http://localhost:8000'},
-                'reply': '',
-                'enabled': False
+                'module': 'forward_st',
+                'params': {},
+                'enabled': True
             },
         ]
 
@@ -863,48 +782,6 @@ How to get:
         self.save_rules()
         print(f"[OK] Added {added} presets")
 
-    def manage_st_forward(self):
-        while True:
-            self.clear_screen()
-            print("\n" + "=" * 50)
-            print("SILLYTAVERN SETTINGS")
-            print("=" * 50 + "\n")
-
-            status = "Enabled" if self.st_bridge.enabled else "Disabled"
-            url = self.config.get('sillytavern_url', 'http://localhost:8000')
-            connected = "Yes" if self.st_bridge.check_connection() else "No"
-
-            print(f"  SillyTavern: {status}")
-            print(f"  URL: {url}")
-            print(f"  Connected: {connected}")
-            print(f"  Stats: Sent={self.st_bridge.stats['sent']} Failed={self.st_bridge.stats['failed']}")
-
-            print("\n" + "-" * 50)
-            print(" [1] Toggle ON/OFF   [2] Change URL   [3] Test Connection   [0] Back")
-            print("-" * 50)
-
-            choice = input("\nChoice: ").strip()
-
-            if choice == '1':
-                if self.st_bridge.enabled:
-                    self.st_bridge.disable()
-                    print("[INFO] SillyTavern disabled")
-                else:
-                    self.st_bridge.enable()
-                    print("[INFO] SillyTavern enabled")
-            elif choice == '2':
-                new_url = input(f"  New URL [{url}]: ").strip()
-                if new_url:
-                    self.st_bridge.set_url(new_url)
-                    print(f"[OK] URL changed to {new_url}")
-            elif choice == '3':
-                if self.st_bridge.check_connection():
-                    print("[OK] Connection successful!")
-                else:
-                    print("[ERROR] Cannot connect to SillyTavern")
-            elif choice == '0':
-                break
-
     def toggle_auto(self):
         self.auto_reply_enabled = not self.auto_reply_enabled
         status = "ON" if self.auto_reply_enabled else "OFF"
@@ -924,16 +801,45 @@ How to get:
                 print(f"[\033[33m{action['rule']}\033[0m]")
                 if action.get('msg'):
                     print(f"  -> {action['msg']}")
-                print(f"  -> Reply: {action['reply']}")
+                print(f"  -> {action['reply']}")
                 print()
 
         input("\nPress Enter...")
 
-    def run(self):
-        # 初始化SillyTavern设置
-        if self.config.get('use_sillytavern', False):
-            self.st_bridge.enable()
+    def st_settings(self):
+        while True:
+            self.clear_screen()
+            print("\n" + "=" * 50)
+            print("SILLYTAVERN SETTINGS")
+            print("=" * 50 + "\n")
 
+            url = self.config.get('sillytavern_url', 'http://localhost:8000')
+            connected = "Yes" if self.st_bridge.check_connection() else "No"
+
+            print(f"  URL: {url}")
+            print(f"  Connected: {connected}")
+            print(f"  Stats: Sent={self.st_bridge.stats['sent']} Failed={self.st_bridge.stats['failed']}")
+
+            print("\n" + "-" * 50)
+            print(" [1] Change URL   [2] Test Connection   [0] Back")
+            print("-" * 50)
+
+            choice = input("\nChoice: ").strip()
+
+            if choice == '1':
+                new_url = input(f"  New URL [{url}]: ").strip()
+                if new_url:
+                    self.st_bridge.set_url(new_url)
+                    print(f"[OK] URL changed to {new_url}")
+            elif choice == '2':
+                if self.st_bridge.check_connection():
+                    print("[OK] Connection successful!")
+                else:
+                    print("[ERROR] Cannot connect to SillyTavern")
+            elif choice == '0':
+                break
+
+    def run(self):
         while True:
             self.draw_panel()
             choice = input("\nCommand: ").strip()
@@ -951,7 +857,7 @@ How to get:
             elif choice == '6':
                 self.show_logs()
             elif choice == '7':
-                self.manage_st_forward()
+                self.st_settings()
             elif choice == '0':
                 if self.douyin.connected:
                     self.douyin.disconnect()

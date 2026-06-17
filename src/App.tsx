@@ -6,7 +6,11 @@ import { useDanmu } from './hooks/useDanmu';
 export default function App() {
   const {
     danmus,
-    connection,
+    platform,
+    setPlatform,
+    roomId,
+    setRoomId,
+    connected,
     filterKeyword,
     setFilterKeyword,
     connect,
@@ -18,7 +22,11 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950">
       <Header
-        connection={connection}
+        platform={platform}
+        onPlatformChange={setPlatform}
+        roomId={roomId}
+        onRoomIdChange={setRoomId}
+        connected={connected}
         filterKeyword={filterKeyword}
         onFilterChange={setFilterKeyword}
         onConnect={connect}
@@ -30,7 +38,7 @@ export default function App() {
 
       <ReplyInput
         onSend={sendReply}
-        disabled={connection.status !== 'connected'}
+        disabled={!connected}
       />
     </div>
   );

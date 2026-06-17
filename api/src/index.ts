@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { BilibiliLive } from './bilibili';
 import { DouyinLive } from './douyin';
-import type { DanmuMessage } from './bilibili';
+import type { DanmuMessage } from './douyin';
 
 const app = express();
 const server = createServer(app);

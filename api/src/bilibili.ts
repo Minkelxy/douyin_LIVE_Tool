@@ -1,12 +1,5 @@
 import { WebSocket } from 'ws';
-
-export interface DanmuMessage {
-  id: string;
-  username: string;
-  content: string;
-  timestamp: number;
-  platform: string;
-}
+import type { DanmuMessage } from './douyin';
 
 export interface LiveConnection {
   roomId: string;

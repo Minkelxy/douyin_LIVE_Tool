@@ -1,57 +1,91 @@
-# React + TypeScript + Vite
+# 直播弹幕互动工具
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+实时直播弹幕互动管理面板，支持 B站、抖音直播弹幕获取，提供自动回复、弹幕抽奖、弹幕投票、礼物感谢等互动功能。
 
-Currently, two official plugins are available:
+## 功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **弹幕获取** — 支持模拟数据、B站直播、抖音直播三种模式
+- **自动回复** — 关键词匹配自动发送预设回复
+- **弹幕抽奖** — 设置关键词，观众发送弹幕参与，随机抽取中奖者
+- **弹幕投票** — 创建投票，观众发送弹幕参与，实时查看结果
+- **礼物感谢** — 模板化礼物感谢自动回复
+- **弹幕筛选** — 按关键词过滤弹幕展示
 
-## Expanding the ESLint configuration
+## 技术栈
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+| 层 | 技术 |
+|---|---|
+| 前端 | React 18 + TypeScript + Vite + TailwindCSS |
+| 后端 | Node.js + Express + Socket.IO |
+| 弹幕接入 | WebSocket (B站直连 / 抖音 Go 代理) |
+| 图标 | Lucide React |
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## 快速开始
+
+### 安装依赖
+
+```bash
+# 前端依赖
+npm install
+
+# 后端依赖
+cd api && npm install && cd ..
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 构建前端
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+npm run build
+```
 
-export default tseslint.config({
-  extends: [
-    // other configs...
-    // Enable lint rules for React
-    reactX.configs['recommended-typescript'],
-    // Enable lint rules for React DOM
-    reactDom.configs.recommended,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+### 启动服务
+
+```bash
+# 方式一：一键启动（需要 Go 代理二进制文件 api/douyinLive-proxy）
+./start.sh
+
+# 方式二：单独启动后端
+cd api && npm start
+```
+
+启动后访问 `http://localhost:3001`。
+
+### 开发模式
+
+```bash
+# 前端开发服务器
+npm run dev
+
+# 后端开发服务器（需要先构建）
+cd api && npm run dev
+```
+
+## 项目结构
+
+```
+├── src/                    # 前端 React 应用
+│   ├── components/         # UI 组件
+│   │   ├── Header.tsx           # 顶部工具栏
+│   │   ├── DanmuList.tsx        # 弹幕列表
+│   │   ├── DanmuItem.tsx        # 单条弹幕
+│   │   ├── ReplyInput.tsx       # 回复输入框
+│   │   ├── InteractionSidebar.tsx # 互动工具侧边栏
+│   │   ├── AutoReplyPanel.tsx   # 自动回复规则配置
+│   │   ├── LotteryPanel.tsx     # 弹幕抽奖
+│   │   ├── VotePanel.tsx        # 弹幕投票
+│   │   └── GiftReplyPanel.tsx   # 礼物感谢回复
+│   ├── hooks/              # 自定义 Hooks
+│   │   ├── useDanmu.ts         # 弹幕连接与管理
+│   │   └── useInteraction.ts   # 互动功能逻辑
+│   ├── types/              # TypeScript 类型定义
+│   └── utils/              # 工具函数
+│       └── mockDanmu.ts        # 模拟弹幕生成器
+├── api/                    # Node.js 后端
+│   ├── src/
+│   │   ├── index.ts            # Express + Socket.IO 服务入口
+│   │   ├── douyin.ts           # 抖音直播连接
+│   │   └── bilibili.ts         # B站直播连接
+│   └── douyinLive-proxy        # Go 抖音代理（二进制）
+├── start.sh                # 一键启动脚本
+└── vite.config.ts
 ```

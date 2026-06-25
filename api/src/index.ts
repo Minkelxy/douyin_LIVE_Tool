@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import path from 'path';
 import { BilibiliLive } from './bilibili';
 import { DouyinLive } from './douyin';
 import type { DanmuMessage } from './douyin';
@@ -14,6 +15,15 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3001;
+
+// 托管前端静态文件
+const frontendDist = path.resolve(__dirname, '../../dist');
+app.use(express.static(frontendDist));
+// SPA fallback
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) return;
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
 
 interface LiveSession {
   platform: 'bilibili' | 'douyin';

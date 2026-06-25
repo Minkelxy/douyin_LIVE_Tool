@@ -4,7 +4,8 @@ import type { Danmu } from '../types/danmu';
 import { generateRandomDanmu, generateReplyDanmu } from '../utils/mockDanmu';
 
 const MAX_DANMU_COUNT = 50;
-const SOCKET_URL = 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.PROD ? window.location.origin : 'http://localhost:3001';
+const SOCKET_PATH = import.meta.env.PROD ? '/douyinlive/socket.io' : '/socket.io';
 
 export type PlatformType = 'mock' | 'bilibili' | 'douyin';
 
@@ -37,7 +38,7 @@ export function useDanmu() {
     } else {
       if (!roomId.trim()) return;
 
-      socketRef.current = io(SOCKET_URL);
+      socketRef.current = io(SOCKET_URL, { path: SOCKET_PATH });
 
       socketRef.current.on('connect', () => {
         socketRef.current?.emit('join', { platform, roomId: roomId.trim() });

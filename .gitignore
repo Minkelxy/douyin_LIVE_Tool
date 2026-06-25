@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# douyin live proxy binary
+api/douyinLive-proxy

@@ -93,10 +93,10 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
                   onChange={(e) => setEditReply(e.target.value)}
                   className="flex-[2] bg-purple-950/50 border border-purple-400 rounded px-2 py-1 text-sm text-purple-100"
                 />
-                <button onClick={saveEdit} className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded">
+                <button onClick={saveEdit} className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded" aria-label="保存">
                   <Check className="w-4 h-4" />
                 </button>
-                <button onClick={cancelEdit} className="p-1 text-red-400 hover:bg-red-500/20 rounded">
+                <button onClick={cancelEdit} className="p-1 text-red-400 hover:bg-red-500/20 rounded" aria-label="取消">
                   <X className="w-4 h-4" />
                 </button>
               </>
@@ -106,6 +106,8 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
                 <span className="text-purple-200 text-sm flex-1 truncate">{rule.reply}</span>
                 <button
                   onClick={() => onUpdate(rule.id, { enabled: !rule.enabled })}
+                  role="switch"
+                  aria-checked={rule.enabled}
                   className={`w-10 h-5 rounded-full transition-colors ${
                     rule.enabled ? 'bg-emerald-500' : 'bg-purple-700'
                   }`}
@@ -114,10 +116,10 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
                     rule.enabled ? 'translate-x-5' : 'translate-x-0.5'
                   }`} />
                 </button>
-                <button onClick={() => startEdit(rule)} className="p-1 text-purple-400 hover:text-cyan-400">
+                <button onClick={() => startEdit(rule)} className="p-1 text-purple-400 hover:text-cyan-400" aria-label="编辑规则">
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button onClick={() => onRemove(rule.id)} className="p-1 text-purple-400 hover:text-red-400">
+                <button onClick={() => onRemove(rule.id)} className="p-1 text-purple-400 hover:text-red-400" aria-label="删除规则">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </>

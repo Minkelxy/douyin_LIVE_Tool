@@ -8,8 +8,3 @@ export interface Danmu {
 }
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
-
-export interface ConnectionState {
-  status: ConnectionStatus;
-  platform: string;
-}

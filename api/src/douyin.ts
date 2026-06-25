@@ -110,8 +110,8 @@ export class DouyinLive {
             platform: 'douyin',
           });
         }
-      } catch {
-        // 非 JSON 消息忽略
+      } catch (err) {
+        console.error('Douyin message parse error:', err);
       }
     });
 
@@ -121,7 +121,8 @@ export class DouyinLive {
       this.scheduleReconnect();
     });
 
-    this.ws.on('error', () => {
+    this.ws.on('error', (err) => {
+      console.error('Douyin WebSocket error:', err);
       this.connected = false;
       this.onStatusChange?.(false);
     });

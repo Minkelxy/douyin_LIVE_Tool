@@ -13,6 +13,14 @@ export function DanmuList({ danmus }: DanmuListProps) {
   const scrollTimeout = useRef<number | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const list = listRef.current;
     if (!list || isUserScrolling.current) return;
 

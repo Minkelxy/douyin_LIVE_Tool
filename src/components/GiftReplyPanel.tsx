@@ -70,6 +70,8 @@ export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPa
             <span className="text-purple-200 text-sm flex-1 truncate">{rule.replyTemplate}</span>
             <button
               onClick={() => onUpdate(rule.id, { enabled: !rule.enabled })}
+              role="switch"
+              aria-checked={rule.enabled}
               className="p-1"
             >
               {rule.enabled ? (
@@ -78,7 +80,7 @@ export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPa
                 <ToggleLeft className="w-5 h-5 text-purple-400" />
               )}
             </button>
-            <button onClick={() => onRemove(rule.id)} className="p-1 text-purple-400 hover:text-red-400">
+            <button onClick={() => onRemove(rule.id)} className="p-1 text-purple-400 hover:text-red-400" aria-label="删除礼物回复规则">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>

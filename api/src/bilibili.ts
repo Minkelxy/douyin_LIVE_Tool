@@ -1,15 +1,6 @@
 import { WebSocket } from 'ws';
 import type { DanmuMessage } from './douyin';
 
-export interface LiveConnection {
-  roomId: string;
-  platform: 'bilibili' | 'douyin';
-  ws?: WebSocket;
-  connected: boolean;
-  onMessage?: (msg: DanmuMessage) => void;
-  onStatusChange?: (connected: boolean) => void;
-}
-
 const MAX_RECONNECT_DELAY = 30000;
 const INITIAL_RECONNECT_DELAY = 1000;
 
@@ -60,7 +51,8 @@ export class BilibiliLive {
       this.scheduleReconnect();
     });
 
-    this.ws.on('error', () => {
+    this.ws.on('error', (err) => {
+      console.error('Bilibili WebSocket error:', err);
       this.connected = false;
       this.onStatusChange?.(false);
     });
@@ -96,9 +88,15 @@ export class BilibiliLive {
   private sendJoinPacket() {
     if (!this.ws) return;
 
+    const roomIdNum = parseInt(this.roomId, 10);
+    if (isNaN(roomIdNum)) {
+      console.error(`Invalid bilibili roomId: ${this.roomId}`);
+      return;
+    }
+
     const packet = {
       uid: 0,
-      roomid: parseInt(this.roomId),
+      roomid: roomIdNum,
       protover: 2,
       platform: 'web',
       clientver: '1.4.0',
@@ -150,53 +148,65 @@ export class BilibiliLive {
       if (!Array.isArray(data)) return;
 
       for (const item of data) {
-        const msg: DanmuMessage = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          username: '',
-          content: '',
-          timestamp: Date.now(),
-          platform: 'bilibili'
-        };
-
         if (item.cmd === 'DANMU_MSG') {
           const info = item.info;
           if (info && info[1] && info[2]) {
-            msg.username = info[2][1];
-            msg.content = info[1];
-            this.onMessage?.(msg);
+            this.onMessage?.({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: info[2][1],
+              content: info[1],
+              timestamp: Date.now(),
+              platform: 'bilibili'
+            });
           }
         } else if (item.cmd === 'SEND_GIFT') {
           const d = item.data;
           if (d) {
-            msg.username = d.uname || '匿名';
-            msg.content = `[礼物] ${d.giftName || '礼物'} x${d.num || 1}`;
-            this.onMessage?.(msg);
+            this.onMessage?.({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: d.uname || '匿名',
+              content: `[礼物] ${d.giftName || '礼物'} x${d.num || 1}`,
+              timestamp: Date.now(),
+              platform: 'bilibili'
+            });
           }
         } else if (item.cmd === 'INTERACT_WORD') {
           const d = item.data;
           if (d) {
-            msg.username = d.uname || '匿名';
-            msg.content = d.msg_type === 2 ? '[关注了主播]' : '[进入直播间]';
-            this.onMessage?.(msg);
+            this.onMessage?.({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: d.uname || '匿名',
+              content: d.msg_type === 2 ? '[关注了主播]' : '[进入直播间]',
+              timestamp: Date.now(),
+              platform: 'bilibili'
+            });
           }
         } else if (item.cmd === 'WELCOME') {
           const d = item.data;
           if (d) {
-            msg.username = d.uname || '匿名';
-            msg.content = '[进入直播间]';
-            this.onMessage?.(msg);
+            this.onMessage?.({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: d.uname || '匿名',
+              content: '[进入直播间]',
+              timestamp: Date.now(),
+              platform: 'bilibili'
+            });
           }
         } else if (item.cmd === 'GUARD_BUY') {
           const d = item.data;
           if (d) {
-            msg.username = d.username || '匿名';
-            msg.content = `[开通舰长] ${d.gift_name || ''}`;
-            this.onMessage?.(msg);
+            this.onMessage?.({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              username: d.username || '匿名',
+              content: `[开通舰长] ${d.gift_name || ''}`,
+              timestamp: Date.now(),
+              platform: 'bilibili'
+            });
           }
         }
       }
-    } catch {
-      // 解析失败忽略
+    } catch (err) {
+      console.error('Bilibili message parse error:', err);
     }
   }
 

@@ -34,15 +34,13 @@ const colors = [
   '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
 ];
 
-let idCounter = 0;
-
 export function generateRandomDanmu(): Danmu {
   const username = usernames[Math.floor(Math.random() * usernames.length)];
   const content = messages[Math.floor(Math.random() * messages.length)];
   const color = colors[Math.floor(Math.random() * colors.length)];
 
   return {
-    id: `danmu-${++idCounter}-${Date.now()}`,
+    id: `danmu-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     username,
     content,
     timestamp: Date.now(),

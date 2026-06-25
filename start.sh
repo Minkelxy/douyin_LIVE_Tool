@@ -36,7 +36,7 @@ if [ "$CADDY_PORT" -gt 0 ] && command -v caddy &>/dev/null; then
   CADDY_HTTP_PORT=$CADDY_PORT caddy run --config "$SCRIPT_DIR/Caddyfile" --adapter caddyfile &
   CADDY_PID=$!
   echo ""
-  echo "  打开浏览器访问: http://117.72.184.12:$CADDY_PORT/douyin-live/"
+  echo "  打开浏览器访问: http://117.72.184.12:$CADDY_PORT/douyinlive/"
 else
   echo "[3/3] Caddy 未启用"
   echo ""

@@ -11,12 +11,18 @@ export interface DanmuMessage {
 // Go 代理服务默认地址
 const PROXY_URL = process.env.DOUYIN_PROXY_URL || 'ws://127.0.0.1:1088';
 
+const MAX_RECONNECT_DELAY = 30000;
+const INITIAL_RECONNECT_DELAY = 1000;
+
 export class DouyinLive {
   private roomId: string;
   private ws?: WebSocket;
   private connected = false;
   private onMessage?: (msg: DanmuMessage) => void;
   private onStatusChange?: (connected: boolean) => void;
+  private reconnectAttempts = 0;
+  private reconnectTimeout?: ReturnType<typeof setTimeout>;
+  private intentionalClose = false;
 
   constructor(roomId: string) {
     this.roomId = roomId;
@@ -32,12 +38,14 @@ export class DouyinLive {
 
   async connect() {
     if (this.connected) return;
+    this.intentionalClose = false;
 
     const url = `${PROXY_URL}/ws/${this.roomId}`;
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {
       this.connected = true;
+      this.reconnectAttempts = 0;
       this.onStatusChange?.(true);
     });
 
@@ -110,6 +118,7 @@ export class DouyinLive {
     this.ws.on('close', () => {
       this.connected = false;
       this.onStatusChange?.(false);
+      this.scheduleReconnect();
     });
 
     this.ws.on('error', () => {
@@ -119,9 +128,30 @@ export class DouyinLive {
   }
 
   disconnect() {
+    this.intentionalClose = true;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = undefined;
+    }
     this.ws?.close();
     this.connected = false;
+    this.reconnectAttempts = 0;
     this.onStatusChange?.(false);
+  }
+
+  private scheduleReconnect() {
+    if (this.intentionalClose || this.reconnectTimeout) return;
+
+    const delay = Math.min(
+      INITIAL_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts),
+      MAX_RECONNECT_DELAY
+    );
+    this.reconnectAttempts++;
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = undefined;
+      this.connect();
+    }, delay);
   }
 
   isConnected() {

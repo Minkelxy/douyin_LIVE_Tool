@@ -42,6 +42,7 @@ export interface GiftMessage {
 }
 
 export interface GiftReplyRule {
+  id: string;
   giftName: string;
   replyTemplate: string;
   enabled: boolean;

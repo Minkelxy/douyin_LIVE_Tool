@@ -5,8 +5,8 @@ import type { GiftReplyRule } from '../types/interaction';
 interface GiftReplyPanelProps {
   rules: GiftReplyRule[];
   onAdd: (giftName: string, replyTemplate: string) => void;
-  onRemove: (giftName: string) => void;
-  onUpdate: (giftName: string, updates: Partial<GiftReplyRule>) => void;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<GiftReplyRule>) => void;
 }
 
 export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPanelProps) {
@@ -61,7 +61,7 @@ export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPa
       <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
         {rules.map((rule) => (
           <div
-            key={rule.giftName}
+            key={rule.id}
             className={`flex items-center gap-2 p-3 rounded-lg ${
               rule.enabled ? 'bg-purple-800/30' : 'bg-purple-900/20 opacity-60'
             }`}
@@ -69,7 +69,7 @@ export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPa
             <span className="text-pink-400 font-medium text-sm w-20 truncate">{rule.giftName}</span>
             <span className="text-purple-200 text-sm flex-1 truncate">{rule.replyTemplate}</span>
             <button
-              onClick={() => onUpdate(rule.giftName, { enabled: !rule.enabled })}
+              onClick={() => onUpdate(rule.id, { enabled: !rule.enabled })}
               className="p-1"
             >
               {rule.enabled ? (
@@ -78,7 +78,7 @@ export function GiftReplyPanel({ rules, onAdd, onRemove, onUpdate }: GiftReplyPa
                 <ToggleLeft className="w-5 h-5 text-purple-400" />
               )}
             </button>
-            <button onClick={() => onRemove(rule.giftName)} className="p-1 text-purple-400 hover:text-red-400">
+            <button onClick={() => onRemove(rule.id)} className="p-1 text-purple-400 hover:text-red-400">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>

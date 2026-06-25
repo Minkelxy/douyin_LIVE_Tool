@@ -34,9 +34,9 @@ export function useInteraction() {
       }
     }
     return [
-      { giftName: '小心心', replyTemplate: '感谢 {user} 送的 {gift}！爱你~', enabled: true },
-      { giftName: '玫瑰', replyTemplate: '感谢 {user} 送的 {gift}！太浪漫了~', enabled: true },
-      { giftName: '火箭', replyTemplate: '哇！感谢 {user} 送的 {gift}！大气！', enabled: true },
+      { id: '1', giftName: '小心心', replyTemplate: '感谢 {user} 送的 {gift}！爱你~', enabled: true },
+      { id: '2', giftName: '玫瑰', replyTemplate: '感谢 {user} 送的 {gift}！太浪漫了~', enabled: true },
+      { id: '3', giftName: '火箭', replyTemplate: '哇！感谢 {user} 送的 {gift}！大气！', enabled: true },
     ];
   });
 
@@ -220,6 +220,7 @@ export function useInteraction() {
   // 添加礼物感谢规则
   const addGiftReplyRule = useCallback((giftName: string, replyTemplate: string) => {
     const newRule: GiftReplyRule = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       giftName,
       replyTemplate,
       enabled: true
@@ -228,13 +229,13 @@ export function useInteraction() {
   }, []);
 
   // 删除礼物感谢规则
-  const removeGiftReplyRule = useCallback((giftName: string) => {
-    setGiftReplyRules(prev => prev.filter(r => r.giftName !== giftName));
+  const removeGiftReplyRule = useCallback((id: string) => {
+    setGiftReplyRules(prev => prev.filter(r => r.id !== id));
   }, []);
 
   // 更新礼物感谢规则
-  const updateGiftReplyRule = useCallback((giftName: string, updates: Partial<GiftReplyRule>) => {
-    setGiftReplyRules(prev => prev.map(r => r.giftName === giftName ? { ...r, ...updates } : r));
+  const updateGiftReplyRule = useCallback((id: string, updates: Partial<GiftReplyRule>) => {
+    setGiftReplyRules(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
   }, []);
 
   // 保存到localStorage

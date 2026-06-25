@@ -31,8 +31,8 @@ interface InteractionSidebarProps {
   // 礼物感谢
   giftReplyRules: GiftReplyRule[];
   onAddGiftReply: (giftName: string, replyTemplate: string) => void;
-  onRemoveGiftReply: (giftName: string) => void;
-  onUpdateGiftReply: (giftName: string, updates: Partial<GiftReplyRule>) => void;
+  onRemoveGiftReply: (id: string) => void;
+  onUpdateGiftReply: (id: string, updates: Partial<GiftReplyRule>) => void;
 }
 
 type TabType = 'autoReply' | 'lottery' | 'vote' | 'giftReply';

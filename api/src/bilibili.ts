@@ -106,7 +106,7 @@ export class BilibiliLive {
     };
 
     const buffer = Buffer.alloc(16 + JSON.stringify(packet).length);
-    buffer.writeUInt32BE(buffer.length - 4, 0);
+    buffer.writeUInt32BE(buffer.length, 0);
     buffer.writeUInt16BE(16, 4);
     buffer.writeUInt16BE(1, 6);
     buffer.writeUInt32BE(7, 8);

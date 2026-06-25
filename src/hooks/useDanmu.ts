@@ -29,6 +29,16 @@ export function useDanmu() {
   }, []);
 
   const connect = useCallback(() => {
+    // 先断开已有连接，防止重复连接
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
     if (platform === 'mock') {
       setConnected(true);
       intervalRef.current = window.setInterval(() => {
@@ -84,11 +94,12 @@ export function useDanmu() {
     setDanmus([]);
   }, []);
 
-  const filteredDanmus = danmus.filter(danmu =>
-    filterKeyword === '' ||
-    danmu.content.includes(filterKeyword) ||
-    danmu.username.includes(filterKeyword)
-  );
+  const filteredDanmus = danmus.filter(danmu => {
+    if (filterKeyword === '') return true;
+    const kw = filterKeyword.toLowerCase();
+    return danmu.content.toLowerCase().includes(kw) ||
+      danmu.username.toLowerCase().includes(kw);
+  });
 
   useEffect(() => {
     return () => {

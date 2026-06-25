@@ -25,33 +25,35 @@ export default function App() {
 
   const interaction = useInteraction();
 
+  const {
+    processAutoReply,
+    processLottery,
+    processVote,
+    processGiftReply
+  } = interaction;
+
   // 处理弹幕自动回复和互动
   const processDanmuInteractions = useCallback((danmu: { id: string; username: string; content: string; timestamp: number }) => {
+    const d = { ...danmu, color: '#8B5CF6', isReply: false };
+
     // 自动回复
-    const autoReply = interaction.processAutoReply({
-      ...danmu,
-      color: '#8B5CF6',
-      isReply: false
-    });
+    const autoReply = processAutoReply(d);
     if (autoReply) {
-      const replyDanmu = generateReplyDanmu(autoReply);
       sendReply(autoReply);
     }
 
+    // 礼物感谢
+    const giftReply = processGiftReply(d);
+    if (giftReply) {
+      sendReply(giftReply);
+    }
+
     // 抽奖参与
-    interaction.processLottery({
-      ...danmu,
-      color: '#8B5CF6',
-      isReply: false
-    });
+    processLottery(d);
 
     // 投票参与
-    interaction.processVote({
-      ...danmu,
-      color: '#8B5CF6',
-      isReply: false
-    });
-  }, [interaction, sendReply]);
+    processVote(d);
+  }, [processAutoReply, processGiftReply, processLottery, processVote, sendReply]);
 
   // 监听弹幕变化
   useEffect(() => {

@@ -93,23 +93,24 @@ export function useInteraction() {
   // 处理抽奖参与
   const processLottery = useCallback((danmu: Danmu): boolean => {
     if (!lotteryActive || !lotteryKeyword) return false;
-    
+
     if (danmu.content.toLowerCase().includes(lotteryKeyword.toLowerCase())) {
-      // 检查是否已参与
-      const exists = lotteryParticipants.some(p => p.username === danmu.username);
-      if (!exists) {
-        const participant: LotteryParticipant = {
-          id: danmu.id,
-          username: danmu.username,
-          content: danmu.content,
-          timestamp: danmu.timestamp
-        };
-        setLotteryParticipants(prev => [...prev, participant]);
-        return true;
-      }
+      const participant: LotteryParticipant = {
+        id: danmu.id,
+        username: danmu.username,
+        content: danmu.content,
+        timestamp: danmu.timestamp
+      };
+      let added = false;
+      setLotteryParticipants(prev => {
+        if (prev.some(p => p.username === danmu.username)) return prev;
+        added = true;
+        return [...prev, participant];
+      });
+      return added;
     }
     return false;
-  }, [lotteryActive, lotteryKeyword, lotteryParticipants]);
+  }, [lotteryActive, lotteryKeyword]);
 
   // 执行抽奖
   const drawLottery = useCallback(() => {
@@ -165,31 +166,31 @@ export function useInteraction() {
     if (!voteSession || !voteSession.active) return false;
 
     const content = danmu.content.trim();
-    
+
     // 检查是否是投票关键词+选项编号
     if (content.startsWith(voteSession.keyword)) {
       const optionId = content.replace(voteSession.keyword, '').trim();
-      
+
       // 检查选项是否有效
       const option = voteSession.options.find(o => o.id === optionId || o.text === optionId);
       if (option) {
-        // 记录投票（每个用户只能投一次）
-        const userVotes = voteResults[danmu.username];
-        if (!userVotes) {
-          setVoteResults(prev => ({
-            ...prev,
-            [danmu.username]: [option.id]
-          }));
+        let voted = false;
+        setVoteResults(prev => {
+          if (prev[danmu.username]) return prev;
+          voted = true;
+          return { ...prev, [danmu.username]: [option.id] };
+        });
+        if (voted) {
           setVoteSession(prev => prev ? {
             ...prev,
             options: prev.options.map(o => o.id === option.id ? { ...o, votes: o.votes + 1 } : o)
           } : null);
-          return true;
         }
+        return voted;
       }
     }
     return false;
-  }, [voteSession, voteResults]);
+  }, [voteSession]);
 
   // 结束投票
   const endVote = useCallback(() => {
@@ -201,17 +202,22 @@ export function useInteraction() {
   // 获取投票结果
   const getVoteResults = useCallback(() => {
     if (!voteSession) return null;
-    return voteSession.options.sort((a, b) => b.votes - a.votes);
+    return [...voteSession.options].sort((a, b) => b.votes - a.votes);
   }, [voteSession]);
 
   // 处理礼物感谢
-  const processGiftReply = useCallback((gift: GiftMessage): string | null => {
+  const processGiftReply = useCallback((danmu: Danmu): string | null => {
+    // 匹配 [礼物] 礼物名 x数量 格式
+    const match = danmu.content.match(/^\[礼物\] (.+?) x(\d+)$/);
+    if (!match) return null;
+    const giftName = match[1];
+    const giftCount = parseInt(match[2], 10);
     const enabledRules = giftReplyRules.filter(r => r.enabled);
     for (const rule of enabledRules) {
-      if (gift.giftName.toLowerCase().includes(rule.giftName.toLowerCase())) {
+      if (giftName.toLowerCase().includes(rule.giftName.toLowerCase())) {
         return rule.replyTemplate
-          .replace('{user}', gift.username)
-          .replace('{gift}', `${gift.giftName} x${gift.giftCount}`);
+          .replace('{user}', danmu.username)
+          .replace('{gift}', `${giftName} x${giftCount}`);
       }
     }
     return null;

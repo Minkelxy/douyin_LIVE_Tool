@@ -67,7 +67,14 @@ io.on('connection', (socket) => {
             io.emit('status', { platform, roomId, connected });
           }
         );
-        await session.douyin.connect();
+        try {
+          await session.douyin.connect();
+        } catch (err) {
+          console.error('Douyin connect failed:', err);
+          sessions.delete(sessionKey);
+          socket.emit('status', { platform, roomId, connected: false });
+          return;
+        }
       }
       
       sessions.set(sessionKey, session);
@@ -85,6 +92,15 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
+    // 检查每个 session，如果没有客户端在对应房间则清理
+    for (const [key, session] of sessions) {
+      const room = io.sockets.adapter.rooms.get(key);
+      if (!room || room.size === 0) {
+        session.bilibili?.disconnect();
+        session.douyin?.disconnect();
+        sessions.delete(key);
+      }
+    }
   });
 });
 

@@ -1,8 +1,13 @@
+/** 自动回复匹配方式：contains=包含，exact=完全一致 */
+export type MatchMode = 'contains' | 'exact';
+
 export interface AutoReplyRule {
   id: string;
   keyword: string;
   reply: string;
   enabled: boolean;
+  /** 缺省视为 contains（兼容旧数据） */
+  matchMode?: MatchMode;
 }
 
 export interface LotteryParticipant {

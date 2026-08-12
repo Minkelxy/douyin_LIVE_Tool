@@ -69,6 +69,25 @@ describe('matchAutoReply', () => {
     const rules = autoReplyRules([{ keyword: '66' }, { keyword: '666' }]);
     expect(matchAutoReply(danmu('666'), rules)).toBe('666！感谢支持！');
   });
+
+  it('exact 模式要求弹幕与关键词完全一致', () => {
+    const rules = autoReplyRules([{ keyword: '666', matchMode: 'exact' }]);
+    expect(matchAutoReply(danmu('666'), rules)).toBe('666！感谢支持！');
+    expect(matchAutoReply(danmu('6666'), rules)).toBeNull();
+    expect(matchAutoReply(danmu(' 666 '), rules)).toBeNull(); // 含空白不算完全一致
+  });
+
+  it('matchMode 缺省或 contains 时按包含匹配', () => {
+    const withContains = autoReplyRules([{ keyword: '666', matchMode: 'contains' }]);
+    const withUndefined = autoReplyRules([{ keyword: '666' }]);
+    expect(matchAutoReply(danmu('6666'), withContains)).toBe('666！感谢支持！');
+    expect(matchAutoReply(danmu('6666'), withUndefined)).toBe('666！感谢支持！');
+  });
+
+  it('exact 模式忽略大小写', () => {
+    const rules = autoReplyRules([{ keyword: 'ok', matchMode: 'exact' }]);
+    expect(matchAutoReply(danmu('OK'), rules)).toBe('666！感谢支持！');
+  });
 });
 
 describe('matchGiftReply', () => {

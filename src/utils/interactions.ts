@@ -16,7 +16,8 @@ import type {
 export const GIFT_PATTERN = /^\[礼物\] (.+?) x(\d+)$/;
 
 /**
- * 自动回复：按规则顺序做关键词包含匹配，返回第一条命中的回复；无命中返回 null。
+ * 自动回复：按规则顺序做关键词匹配，返回第一条命中的回复；无命中返回 null。
+ * matchMode 为 exact 时要求弹幕内容与关键词完全一致，否则为包含匹配。
  * 空关键词规则直接跳过，避免对每条弹幕都触发。
  */
 export function matchAutoReply(danmu: Danmu, rules: AutoReplyRule[]): string | null {
@@ -24,7 +25,9 @@ export function matchAutoReply(danmu: Danmu, rules: AutoReplyRule[]): string | n
   for (const rule of rules) {
     if (!rule.enabled) continue;
     const kw = rule.keyword.trim().toLowerCase();
-    if (kw && text.includes(kw)) return rule.reply;
+    if (!kw) continue;
+    const hit = rule.matchMode === 'exact' ? text === kw : text.includes(kw);
+    if (hit) return rule.reply;
   }
   return null;
 }

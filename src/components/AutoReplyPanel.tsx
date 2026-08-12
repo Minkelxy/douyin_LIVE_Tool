@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
-import type { AutoReplyRule } from '../types/interaction';
+import type { AutoReplyRule, MatchMode } from '../types/interaction';
 
 interface AutoReplyPanelProps {
   rules: AutoReplyRule[];
-  onAdd: (keyword: string, reply: string) => void;
+  onAdd: (keyword: string, reply: string, matchMode: MatchMode) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, updates: Partial<AutoReplyRule>) => void;
 }
@@ -12,15 +12,17 @@ interface AutoReplyPanelProps {
 export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPanelProps) {
   const [newKeyword, setNewKeyword] = useState('');
   const [newReply, setNewReply] = useState('');
+  const [newMatchMode, setNewMatchMode] = useState<MatchMode>('contains');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editKeyword, setEditKeyword] = useState('');
   const [editReply, setEditReply] = useState('');
 
   const handleAdd = () => {
     if (newKeyword.trim() && newReply.trim()) {
-      onAdd(newKeyword.trim(), newReply.trim());
+      onAdd(newKeyword.trim(), newReply.trim(), newMatchMode);
       setNewKeyword('');
       setNewReply('');
+      setNewMatchMode('contains');
     }
   };
 
@@ -54,6 +56,15 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
           onChange={(e) => setNewKeyword(e.target.value)}
           className="flex-1 bg-purple-950/50 border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-purple-100 placeholder-purple-400/50 focus:outline-none focus:border-purple-400"
         />
+        <select
+          value={newMatchMode}
+          onChange={(e) => setNewMatchMode(e.target.value as MatchMode)}
+          className="bg-purple-950/50 border border-purple-500/30 rounded-lg px-2 py-2 text-sm text-purple-200 focus:outline-none focus:border-purple-400"
+          title="匹配方式：包含（弹幕含关键词即触发）或完全匹配（弹幕与关键词完全一致）"
+        >
+          <option value="contains">包含</option>
+          <option value="exact">完全匹配</option>
+        </select>
         <input
           type="text"
           placeholder="回复内容"
@@ -103,6 +114,13 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
             ) : (
               <>
                 <span className="text-cyan-400 font-medium text-sm w-20 truncate">{rule.keyword}</span>
+                <button
+                  onClick={() => onUpdate(rule.id, { matchMode: rule.matchMode === 'exact' ? 'contains' : 'exact' })}
+                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/40 text-purple-300 hover:text-cyan-300 hover:border-cyan-400/50 transition-colors"
+                  title="点击切换匹配方式：包含 / 完全匹配"
+                >
+                  {rule.matchMode === 'exact' ? '完全匹配' : '包含'}
+                </button>
                 <span className="text-purple-200 text-sm flex-1 truncate">{rule.reply}</span>
                 <button
                   onClick={() => onUpdate(rule.id, { enabled: !rule.enabled })}

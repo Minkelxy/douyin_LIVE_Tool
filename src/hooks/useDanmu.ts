@@ -6,6 +6,7 @@ import { generateRandomDanmu, generateReplyDanmu } from '../utils/mockDanmu';
 const MAX_DANMU_COUNT = 50;
 const SOCKET_URL = import.meta.env.PROD ? window.location.origin : 'http://localhost:3001';
 const SOCKET_PATH = import.meta.env.PROD ? '/douyinlive/socket.io' : '/socket.io';
+const STORAGE_KEY_CONNECTION = 'danmu_connection_settings';
 
 export type PlatformType = 'mock' | 'bilibili' | 'douyin';
 
@@ -20,10 +21,29 @@ interface ClientToServerEvents {
   join: (data: { platform: 'bilibili' | 'douyin'; roomId: string }) => void;
 }
 
+/** 从 localStorage 恢复上次的连接设置，损坏时回退默认值 */
+function loadConnectionSettings(): { platform: PlatformType; roomId: string } {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_CONNECTION);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        platform: parsed.platform === 'bilibili' || parsed.platform === 'douyin' ? parsed.platform : 'mock',
+        roomId: typeof parsed.roomId === 'string' ? parsed.roomId : '',
+      };
+    }
+  } catch {
+    // 忽略损坏数据
+  }
+  return { platform: 'mock', roomId: '' };
+}
+
 export function useDanmu() {
+  // 连接设置初始化：从 localStorage 恢复上次的平台与房间号
+  const [connectionSettings] = useState(loadConnectionSettings);
   const [danmus, setDanmus] = useState<Danmu[]>([]);
-  const [platform, setPlatform] = useState<PlatformType>('mock');
-  const [roomId, setRoomId] = useState('');
+  const [platform, setPlatform] = useState<PlatformType>(connectionSettings.platform);
+  const [roomId, setRoomId] = useState(connectionSettings.roomId);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterKeyword, setFilterKeyword] = useState('');
@@ -139,6 +159,11 @@ export function useDanmu() {
       disconnect();
     }
   }, [platform, disconnect]);
+
+  // 持久化连接设置，刷新后恢复
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_CONNECTION, JSON.stringify({ platform, roomId }));
+  }, [platform, roomId]);
 
   return {
     danmus: filteredDanmus,

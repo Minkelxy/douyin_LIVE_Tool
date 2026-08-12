@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Danmu } from '../types/danmu';
-import type { AutoReplyRule, LotteryParticipant, LotteryResult, VoteSession, VoteOption, GiftReplyRule } from '../types/interaction';
+import type { AutoReplyRule, LotteryParticipant, LotteryResult, VoteSession, VoteOption, GiftReplyRule, MatchMode } from '../types/interaction';
 import {
   matchAutoReply,
   matchGiftReply,
@@ -14,9 +14,9 @@ const STORAGE_KEY_AUTO_REPLY = 'danmu_auto_reply_rules';
 const STORAGE_KEY_GIFT_REPLY = 'danmu_gift_reply_rules';
 
 const DEFAULT_AUTO_REPLY_RULES: AutoReplyRule[] = [
-  { id: '1', keyword: '你好', reply: '你好呀！欢迎来到直播间~', enabled: true },
-  { id: '2', keyword: '关注', reply: '感谢关注！点点关注不迷路~', enabled: true },
-  { id: '3', keyword: '666', reply: '666！感谢支持！', enabled: true },
+  { id: '1', keyword: '你好', reply: '你好呀！欢迎来到直播间~', enabled: true, matchMode: 'contains' },
+  { id: '2', keyword: '关注', reply: '感谢关注！点点关注不迷路~', enabled: true, matchMode: 'contains' },
+  { id: '3', keyword: '666', reply: '666！感谢支持！', enabled: true, matchMode: 'contains' },
 ];
 
 const DEFAULT_GIFT_REPLY_RULES: GiftReplyRule[] = [
@@ -67,12 +67,13 @@ export function useInteraction() {
   }, [autoReplyRules]);
 
   // 添加自动回复规则
-  const addAutoReplyRule = useCallback((keyword: string, reply: string) => {
+  const addAutoReplyRule = useCallback((keyword: string, reply: string, matchMode: MatchMode = 'contains') => {
     const newRule: AutoReplyRule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       keyword,
       reply,
-      enabled: true
+      enabled: true,
+      matchMode
     };
     setAutoReplyRules(prev => [...prev, newRule]);
   }, []);

@@ -31,12 +31,12 @@ cd api && npm run dev     # 仅 tsc 后直接运行，无 watch 模式
 
 ## 架构与数据流
 
-单页 React 应用 + Express/Socket.IO 后端，没有数据库，没有测试。弹幕从平台源流入到 UI 的路径：
+单页 React 应用 + Express/Socket.IO 后端，没有数据库。弹幕从平台源流入到 UI 的路径：
 
 ```
 弹幕源 → 后端规范化 → io.emit('danmu') → 前端 useDanmu 监听 → danmus state
                                               ↓
-                              App.tsx useEffect 取最新弹幕（跳过 isReply）
+                       App.tsx 处理所有未处理过的非回复弹幕（已处理 id 幂等守卫）
                                               ↓
                        processDanmuInteractions（自动回复/礼物/抽奖/投票）
 ```
@@ -49,16 +49,16 @@ cd api && npm run dev     # 仅 tsc 后直接运行，无 watch 模式
 
 ### 后端连接管理（api/src/index.ts）
 
-- Socket.IO 事件：客户端 `join {platform, roomId}` → 按 `platform-roomId` 建 `LiveSession`（会话 Map 复用，同一房间多客户端共享一条平台连接）；`disconnect` 时若房间无人则清理会话。
+- Socket.IO 事件已类型化：`Server<DanmuClientEvents, DanmuServerEvents>`，客户端 `join {platform, roomId}` → 按 `platform-roomId` 建 `LiveSession`（会话 Map 复用，同一房间多客户端共享一条平台连接）；`disconnect` 时若房间无人则清理会话。事件类型定义在 `api/src/types.ts`。
 - 后端通过 `io.emit('danmu')` / `io.emit('status')` 广播，消息统一为 `DanmuMessage` 类型（定义在 `api/src/types.ts`，各模块从这里导入）。
 - `BilibiliLive` 和 `DouyinLive` 结构几乎相同：`setCallbacks` / `connect` / `disconnect` / `isConnected` / 指数退避重连（1s 起，上限 30s）。
 
 ### 前端交互逻辑（useInteraction + App.tsx）
 
 - `src/utils/interactions.ts` 是所有互动匹配的**纯函数**（`matchAutoReply` / `matchGiftReply` / `canJoinLottery` / `resolveVote` / 规则清洗），可独立单测（见 `src/utils/*.test.ts`）。
-- `src/hooks/useInteraction.ts` 只做状态管理，调用上面的纯函数：自动回复（关键词包含匹配）、礼物感谢（正则 `^\[礼物\] (.+?) x(\d+)$`）、抽奖（关键词触发参与 + 随机抽）、投票（关键词+选项编号，1 基编号）。**投票/抽奖的判重基于渲染期状态（`voteResults` / `lotteryParticipants`），不在 setState updater 里做，返回值可靠**。自动回复和礼物规则持久化到 localStorage（key：`danmu_auto_reply_rules`、`danmu_gift_reply_rules`），加载时经 `sanitize*` 清洗，空关键词/坏数据回退默认规则。
-- **互动处理在 `App.tsx`**：`useEffect` 监听 `danmus`，取最后一条非回复弹幕，传给 `processDanmuInteractions` 依次跑自动回复/礼物/抽奖/投票，其中 `sendReply` 生成的回复弹幕会再次进入列表（`isReply: true`，不会再次触发互动，避免循环）。互动逻辑不依赖后端。
-- `useDanmu` 提供 `error` 状态：`connect_error`、join 返回 `connected:false` 时设置错误文案，在 Header 红色横幅展示。
+- `src/hooks/useInteraction.ts` 只做状态管理，调用上面的纯函数：自动回复（关键词**包含/完全匹配**，`matchMode` 字段，缺省包含）、礼物感谢（正则 `^\[礼物\] (.+?) x(\d+)$`）、抽奖（关键词触发参与 + 随机抽）、投票（关键词+选项编号，1 基编号）。**投票/抽奖的判重基于渲染期状态（`voteResults` / `lotteryParticipants`），不在 setState updater 里做，返回值可靠**。自动回复和礼物规则持久化到 localStorage（key：`danmu_auto_reply_rules`、`danmu_gift_reply_rules`），加载时经 `sanitize*` 清洗，空关键词/坏数据回退默认规则。
+- **互动处理在 `App.tsx`**：`useEffect` 基于 **`allDanmus`（未筛选）** 处理所有未处理过的非回复弹幕，`processedDanmuIds` ref 做幂等守卫（每条弹幕恰好处理一次）。用 allDanmus 是为了让被筛选关键词过滤掉的弹幕也参与互动，且筛选变化不会因数组引用变化而重复处理旧弹幕导致重复自动回复。`sendReply` 生成的回复弹幕 `isReply: true` 不会再次触发互动。互动逻辑不依赖后端。
+- `useDanmu` 提供 `error` 状态（`connect_error`、join 返回 `connected:false` 时设置，Header 红色横幅展示），并把平台与房间号持久化到 localStorage（key：`danmu_connection_settings`），刷新后恢复。前端 socket.io-client 的事件载荷也做了类型化。
 
 ## 关键注意点
 
@@ -68,3 +68,4 @@ cd api && npm run dev     # 仅 tsc 后直接运行，无 watch 模式
 - Vite `base: '/douyinlive/'`，生产部署走 Caddy 反向代理（`http://117.72.184.12/douyinlive/`）。
 - `.trae/documents/` 下的 TechnicalArchitecture.md、PRD.md 已过时（只描述 mock 单机版本），以实际代码和 README 为准。
 - 弹幕 ID 无自增，均为 `Date.now()-随机串` 拼出来的字符串，去重/匹配靠 username 等业务字段。
+- **已知限制**：手动回复与自动回复只在本地面板弹幕列表展示（`generateReplyDanmu` 生成 `isReply` 弹幕），并不会真正发送到 B站/抖音直播间——需要平台发送 API 和登录凭据，属于未实现的功能。改动相关代码时注意别让用户误以为回复已上屏。

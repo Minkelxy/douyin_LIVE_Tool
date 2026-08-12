@@ -50,6 +50,7 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
       {/* 添加新规则 */}
       <div className="flex gap-2 mb-4">
         <input
+          data-testid="auto-keyword"
           type="text"
           placeholder="关键词"
           value={newKeyword}
@@ -66,6 +67,7 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
           <option value="exact">完全匹配</option>
         </select>
         <input
+          data-testid="auto-reply"
           type="text"
           placeholder="回复内容"
           value={newReply}
@@ -75,6 +77,7 @@ export function AutoReplyPanel({ rules, onAdd, onRemove, onUpdate }: AutoReplyPa
         <button
           onClick={handleAdd}
           disabled={!newKeyword.trim() || !newReply.trim()}
+          aria-label="添加规则"
           className="p-2 bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 rounded-lg hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-5 h-5" />

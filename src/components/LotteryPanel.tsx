@@ -43,6 +43,7 @@ export function LotteryPanel({
           <p className="text-purple-300/70 text-sm">设置抽奖关键词，观众发送包含关键词的弹幕即可参与</p>
           <div className="flex gap-2">
             <input
+              data-testid="lottery-keyword"
               type="text"
               placeholder="抽奖关键词（如：抽奖）"
               value={inputKeyword}

@@ -80,6 +80,7 @@ export function VotePanel({ session, onStart, onEnd, onReset, getResults }: Vote
         // 创建投票
         <div className="space-y-3">
           <input
+            data-testid="vote-title"
             type="text"
             placeholder="投票主题（如：今天播什么游戏）"
             value={title}
@@ -88,6 +89,7 @@ export function VotePanel({ session, onStart, onEnd, onReset, getResults }: Vote
           />
 
           <textarea
+            data-testid="vote-options"
             placeholder="投票选项（每行一个选项）&#10;如：&#10;王者荣耀&#10;英雄联盟&#10;原神"
             value={optionsText}
             onChange={(e) => setOptionsText(e.target.value)}
@@ -96,6 +98,7 @@ export function VotePanel({ session, onStart, onEnd, onReset, getResults }: Vote
           />
 
           <input
+            data-testid="vote-keyword"
             type="text"
             placeholder="投票关键词（如：投票）"
             value={keyword}

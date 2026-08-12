@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-前端（仓库根目录，ESM）与后端（`api/`，CommonJS）是两套独立的 `package.json`，需分别安装依赖。
+前端（仓库根目录，ESM）与后端（`api/`，CommonJS）是两套独立的 `package.json`，需分别安装依赖。自测分层：单测（vitest）→ 后端冒烟（test:api）→ 浏览器 E2E（test:e2e）。改动后至少跑对应层级的自测，而不只依赖 `tsc` 通过。
 
 ```bash
 # 前端
@@ -15,7 +15,9 @@ npm run dev          # Vite 开发服务器（base 为 /douyinlive/，访问 htt
 npm run build        # tsc -b && vite build，产物在 dist/
 npm run check        # tsc --noEmit 类型检查
 npm run lint         # eslint（覆盖 **/*.{ts,tsx}，含 api/ 下的 ts 文件）
-npm test             # vitest 单测（src/**/*.test.ts，纯 node 环境，不加载构建插件）
+npm test             # vitest 单测（src/**/*.test.{ts,tsx} 纯函数/hook/组件 + api/src 协议解析）
+npm run test:api     # 后端 API 冒烟测试（构建 api → 起服务 → 校验 health/404/SPA/socket 握手）
+npm run test:e2e     # Playwright 浏览器 E2E（先 build 再跑；需先 npx playwright install chromium）
 npm run preview      # 预览构建产物
 
 # 后端

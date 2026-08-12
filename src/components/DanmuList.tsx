@@ -69,6 +69,7 @@ export function DanmuList({ danmus }: DanmuListProps) {
       <div
         ref={listRef}
         onScroll={handleScroll}
+        data-testid="danmu-list"
         className="h-full overflow-y-auto px-4 py-4 space-y-3 scrollbar-thin scrollbar-thumb-purple-500/30 scrollbar-track-transparent"
       >
         {danmus.map((danmu, index) => (

@@ -65,7 +65,9 @@ cd api && npm run dev
 ```bash
 npm run check   # TypeScript 类型检查
 npm run lint    # ESLint
-npm test        # vitest 单元测试（互动匹配逻辑、mock 弹幕生成）
+npm test        # vitest 单测（互动匹配、hook、UI 组件、B站协议解析）
+npm run test:api  # 后端 API 冒烟测试（health/404/SPA/socket 握手）
+npm run test:e2e  # 浏览器 E2E（需先 npx playwright install chromium）
 ```
 
 ## 项目结构

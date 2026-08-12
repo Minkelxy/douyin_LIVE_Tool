@@ -15,6 +15,7 @@ export function DanmuItem({ danmu, index }: DanmuItemProps) {
 
   return (
     <div
+      data-testid="danmu-item"
       className={`
         relative py-3 px-4 rounded-xl backdrop-blur-sm
         border transition-all duration-300

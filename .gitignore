@@ -26,3 +26,7 @@ dist-ssr
 
 # douyin live proxy binary
 api/douyinLive-proxy
+
+# Playwright 测试产物
+test-results/
+playwright-report/

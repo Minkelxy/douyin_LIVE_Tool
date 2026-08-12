@@ -68,4 +68,4 @@ cd api && npm run dev     # 仅 tsc 后直接运行，无 watch 模式
 - Vite `base: '/douyinlive/'`，生产部署走 Caddy 反向代理（`http://117.72.184.12/douyinlive/`）。
 - `.trae/documents/` 下的 TechnicalArchitecture.md、PRD.md 已过时（只描述 mock 单机版本），以实际代码和 README 为准。
 - 弹幕 ID 无自增，均为 `Date.now()-随机串` 拼出来的字符串，去重/匹配靠 username 等业务字段。
-- **已知限制**：手动回复与自动回复只在本地面板弹幕列表展示（`generateReplyDanmu` 生成 `isReply` 弹幕），并不会真正发送到 B站/抖音直播间——需要平台发送 API 和登录凭据，属于未实现的功能。改动相关代码时注意别让用户误以为回复已上屏。
+- **设计约束（确认不需要）**：手动回复与自动回复只在本地面板弹幕列表展示（`generateReplyDanmu` 生成 `isReply` 弹幕），不会发送到 B站/抖音直播间——发送需要平台 API 和登录凭据，已明确不做。改动相关代码时注意别让用户误以为回复已上屏，也不要把它当作缺失功能去实现。

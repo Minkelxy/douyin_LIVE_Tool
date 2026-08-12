@@ -14,6 +14,7 @@ export function useDanmu() {
   const [platform, setPlatform] = useState<PlatformType>('mock');
   const [roomId, setRoomId] = useState('');
   const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [filterKeyword, setFilterKeyword] = useState('');
   const socketRef = useRef<Socket | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -41,6 +42,7 @@ export function useDanmu() {
 
     if (platform === 'mock') {
       setConnected(true);
+      setError(null);
       intervalRef.current = window.setInterval(() => {
         const newDanmu = generateRandomDanmu();
         addDanmu(newDanmu);
@@ -51,7 +53,13 @@ export function useDanmu() {
       socketRef.current = io(SOCKET_URL, { path: SOCKET_PATH });
 
       socketRef.current.on('connect', () => {
+        setError(null);
         socketRef.current?.emit('join', { platform, roomId: roomId.trim() });
+      });
+
+      socketRef.current.on('connect_error', () => {
+        setConnected(false);
+        setError('无法连接后端服务器，请确认服务已启动');
       });
 
       socketRef.current.on('danmu', (msg: { username: string; content: string; platform: string }) => {
@@ -67,6 +75,13 @@ export function useDanmu() {
 
       socketRef.current.on('status', (status: { connected: boolean }) => {
         setConnected(status.connected);
+        if (status.connected) {
+          setError(null);
+        } else if (platform === 'douyin') {
+          setError('抖音连接失败，请检查直播间ID或代理服务是否正常');
+        } else {
+          setError('连接失败，请检查直播间ID是否正确');
+        }
       });
     }
   }, [platform, roomId, addDanmu]);
@@ -81,6 +96,7 @@ export function useDanmu() {
       socketRef.current = null;
     }
     setConnected(false);
+    setError(null);
   }, []);
 
   const sendReply = useCallback((content: string) => {
@@ -121,6 +137,7 @@ export function useDanmu() {
     roomId,
     setRoomId,
     connected,
+    error,
     filterKeyword,
     setFilterKeyword,
     connect,

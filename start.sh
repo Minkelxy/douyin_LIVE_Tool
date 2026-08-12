@@ -30,23 +30,20 @@ cd "$SCRIPT_DIR/api"
 DOUYIN_PROXY_URL="ws://127.0.0.1:$PROXY_PORT" PORT="$PORT" node dist/index.js &
 NODE_PID=$!
 
-# 可选启动 Caddy
-if [ "$CADDY_PORT" -gt 0 ] && command -v caddy &>/dev/null; then
-  echo "[3/3] 启动 Caddy 反向代理 (port $CADDY_PORT)..."
-  CADDY_HTTP_PORT=$CADDY_PORT caddy run --config "$SCRIPT_DIR/Caddyfile" --adapter caddyfile &
-  CADDY_PID=$!
-  echo ""
-  echo "  打开浏览器访问: http://117.72.184.12:$CADDY_PORT/douyinlive/"
+# 使用系统 Caddy 服务
+if systemctl is-active --quiet caddy; then
+  echo "[3/3] 重载系统 Caddy 配置..."
+  systemctl reload caddy
+  echo "  打开浏览器访问: http://117.72.184.12/douyinlive/"
 else
-  echo "[3/3] Caddy 未启用"
+  echo "[3/3] 系统 Caddy 未运行"
   echo ""
   echo "  直接访问: http://localhost:$PORT"
-  echo "  或用 Caddy: ./start.sh 3001 1088 8080"
 fi
 
 echo "  按 Ctrl+C 停止所有服务"
 echo ""
 
 # 等待
-trap "kill $PROXY_PID $NODE_PID $CADDY_PID 2>/dev/null; exit 0" INT TERM
+trap "kill $PROXY_PID $NODE_PID 2>/dev/null; exit 0" INT TERM
 wait

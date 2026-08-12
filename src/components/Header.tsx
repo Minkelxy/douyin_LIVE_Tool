@@ -1,4 +1,4 @@
-import { Wifi, WifiOff, Search, Trash2, Monitor } from 'lucide-react';
+import { Wifi, WifiOff, Search, Trash2, Monitor, AlertTriangle } from 'lucide-react';
 import type { PlatformType } from '../hooks/useDanmu';
 
 interface HeaderProps {
@@ -7,6 +7,7 @@ interface HeaderProps {
   roomId: string;
   onRoomIdChange: (roomId: string) => void;
   connected: boolean;
+  error: string | null;
   filterKeyword: string;
   onFilterChange: (keyword: string) => void;
   onConnect: () => void;
@@ -26,6 +27,7 @@ export function Header({
   roomId,
   onRoomIdChange,
   connected,
+  error,
   filterKeyword,
   onFilterChange,
   onConnect,
@@ -33,7 +35,8 @@ export function Header({
   onClear
 }: HeaderProps) {
   return (
-    <header className="bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 border-b border-purple-500/30 px-6 py-4">
+    <header>
+      <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-900 border-b border-purple-500/30 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4">
@@ -121,6 +124,14 @@ export function Header({
           )}
         </div>
       </div>
+      </div>
+
+      {error && (
+        <div className="px-6 py-2 bg-red-950/60 border-b border-red-500/30 text-red-300 text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
     </header>
   );
 }

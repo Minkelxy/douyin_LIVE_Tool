@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { BilibiliLive } from './bilibili';
 import { DouyinLive } from './douyin';
-import type { DanmuMessage } from './douyin';
+import type { DanmuMessage } from './types';
 
 const app = express();
 const server = createServer(app);

@@ -5,7 +5,6 @@ import { ReplyInput } from './components/ReplyInput';
 import { InteractionSidebar } from './components/InteractionSidebar';
 import { useDanmu } from './hooks/useDanmu';
 import { useInteraction } from './hooks/useInteraction';
-import { generateReplyDanmu } from './utils/mockDanmu';
 
 export default function App() {
   const {
@@ -15,6 +14,7 @@ export default function App() {
     roomId,
     setRoomId,
     connected,
+    error,
     filterKeyword,
     setFilterKeyword,
     connect,
@@ -75,6 +75,7 @@ export default function App() {
           roomId={roomId}
           onRoomIdChange={setRoomId}
           connected={connected}
+          error={error}
           filterKeyword={filterKeyword}
           onFilterChange={setFilterKeyword}
           onConnect={connect}

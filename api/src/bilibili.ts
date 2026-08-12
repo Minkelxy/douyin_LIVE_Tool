@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import type { DanmuMessage } from './douyin';
+import type { DanmuMessage } from './types';
 
 const MAX_RECONNECT_DELAY = 30000;
 const INITIAL_RECONNECT_DELAY = 1000;

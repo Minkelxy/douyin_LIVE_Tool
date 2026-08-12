@@ -1,12 +1,8 @@
 import { WebSocket } from 'ws';
+import type { DanmuMessage } from './types';
 
-export interface DanmuMessage {
-  id: string;
-  username: string;
-  content: string;
-  timestamp: number;
-  platform: string;
-}
+// 向后兼容导出
+export type { DanmuMessage };
 
 // Go 代理服务默认地址
 const PROXY_URL = process.env.DOUYIN_PROXY_URL || 'ws://127.0.0.1:1088';

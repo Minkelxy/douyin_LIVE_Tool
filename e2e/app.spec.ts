@@ -31,15 +31,18 @@ test('自动回复规则：新增、切换匹配方式、删除', async ({ page 
   await page.getByTestId('auto-keyword').fill('测试关键词');
   await page.getByTestId('auto-reply').fill('收到测试回复');
   await page.getByRole('button', { name: '添加规则' }).click();
-  await expect(page.getByText('测试关键词')).toBeVisible();
-  await expect(page.getByText('收到测试回复')).toBeVisible();
 
-  // 切换匹配方式（默认包含 → 完全匹配）
-  await page.getByText('包含', { exact: true }).click();
-  await expect(page.getByText('完全匹配', { exact: true }).first()).toBeVisible();
+  // 用 toHaveCount 断言存在（新规则可能超出 max-h 滚动区被裁剪，toBeVisible 会判 hidden）
+  await expect(page.getByText('测试关键词')).toHaveCount(1);
+  await expect(page.getByText('收到测试回复')).toHaveCount(1);
 
-  // 删除
-  await page.getByRole('button', { name: '删除规则' }).click();
+  // 在新规则所在行内点击「包含」徽标 → 完全匹配
+  const row = page.locator('div[class*="rounded-lg"]').filter({ hasText: '测试关键词' });
+  await row.getByRole('button', { name: '包含' }).click();
+  await expect(row.getByRole('button', { name: '完全匹配' })).toHaveCount(1);
+
+  // 删除（限定在新规则行内，避免命中默认规则的删除按钮）
+  await row.getByRole('button', { name: '删除规则' }).click();
   await expect(page.getByText('测试关键词')).toHaveCount(0);
 });
 

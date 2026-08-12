@@ -67,7 +67,8 @@ npm run check   # TypeScript 类型检查
 npm run lint    # ESLint
 npm test        # vitest 单测（互动匹配、hook、UI 组件、B站协议解析）
 npm run test:api  # 后端 API 冒烟测试（health/404/SPA/socket 握手）
-npm run test:e2e  # 浏览器 E2E（需先 npx playwright install chromium）
+npm run test:e2e  # 浏览器 E2E。首次需 npx playwright install chromium；
+                  # 系统缺库时有 sudo 用 install-deps，无 sudo 用 scripts/install-chromium-deps.sh
 ```
 
 ## 项目结构

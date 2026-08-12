@@ -17,7 +17,10 @@ npm run check        # tsc --noEmit 类型检查
 npm run lint         # eslint（覆盖 **/*.{ts,tsx}，含 api/ 下的 ts 文件）
 npm test             # vitest 单测（src/**/*.test.{ts,tsx} 纯函数/hook/组件 + api/src 协议解析）
 npm run test:api     # 后端 API 冒烟测试（构建 api → 起服务 → 校验 health/404/SPA/socket 握手）
-npm run test:e2e     # Playwright 浏览器 E2E（先 build 再跑；需先 npx playwright install chromium）
+npm run test:e2e     # Playwright E2E（run-e2e.sh 自动构建+注入本地依赖库）。
+                     #   首次需：npx playwright install chromium；系统缺库时
+                     #   有 sudo 用 `sudo npx playwright install-deps chromium`，
+                     #   无 sudo 用 scripts/install-chromium-deps.sh（解压到用户目录）
 npm run preview      # 预览构建产物
 
 # 后端

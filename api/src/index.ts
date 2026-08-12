@@ -4,11 +4,11 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { BilibiliLive } from './bilibili';
 import { DouyinLive } from './douyin';
-import type { DanmuMessage } from './types';
+import type { DanmuClientEvents, DanmuMessage, DanmuServerEvents } from './types';
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server, {
+const io = new Server<DanmuClientEvents, DanmuServerEvents>(server, {
   cors: {
     origin: "*"
   }
@@ -81,12 +81,12 @@ io.on('connection', (socket) => {
     }
 
     socket.join(sessionKey);
-    socket.emit('status', { 
-      platform, 
-      roomId, 
-      connected: platform === 'bilibili' 
-        ? session.bilibili?.isConnected() 
-        : session.douyin?.isConnected() 
+    socket.emit('status', {
+      platform,
+      roomId,
+      connected: platform === 'bilibili'
+        ? session.bilibili?.isConnected() ?? false
+        : session.douyin?.isConnected() ?? false
     });
   });
 

@@ -6,10 +6,11 @@ interface VotePanelProps {
   session: VoteSession | null;
   onStart: (title: string, options: string[], keyword: string) => void;
   onEnd: () => void;
+  onReset: () => void;
   getResults: () => VoteOption[] | null;
 }
 
-export function VotePanel({ session, onStart, onEnd, getResults }: VotePanelProps) {
+export function VotePanel({ session, onStart, onEnd, onReset, getResults }: VotePanelProps) {
   const [title, setTitle] = useState('');
   const [optionsText, setOptionsText] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -164,7 +165,7 @@ export function VotePanel({ session, onStart, onEnd, getResults }: VotePanelProp
           </button>
 
           <button
-            onClick={onEnd}
+            onClick={onReset}
             className="w-full px-4 py-2 bg-purple-500/20 border border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/30"
           >
             开始新投票

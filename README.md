@@ -60,12 +60,20 @@ npm run dev
 cd api && npm run dev
 ```
 
+### 检查与测试
+
+```bash
+npm run check   # TypeScript 类型检查
+npm run lint    # ESLint
+npm test        # vitest 单元测试（互动匹配逻辑、mock 弹幕生成）
+```
+
 ## 项目结构
 
 ```
 ├── src/                    # 前端 React 应用
 │   ├── components/         # UI 组件
-│   │   ├── Header.tsx           # 顶部工具栏
+│   │   ├── Header.tsx           # 顶部工具栏（含连接失败错误横幅）
 │   │   ├── DanmuList.tsx        # 弹幕列表
 │   │   ├── DanmuItem.tsx        # 单条弹幕
 │   │   ├── ReplyInput.tsx       # 回复输入框
@@ -75,17 +83,22 @@ cd api && npm run dev
 │   │   ├── VotePanel.tsx        # 弹幕投票
 │   │   └── GiftReplyPanel.tsx   # 礼物感谢回复
 │   ├── hooks/              # 自定义 Hooks
-│   │   ├── useDanmu.ts         # 弹幕连接与管理
-│   │   └── useInteraction.ts   # 互动功能逻辑
+│   │   ├── useDanmu.ts         # 弹幕连接与管理（Socket.IO 事件已类型化）
+│   │   └── useInteraction.ts   # 互动状态管理（调用 utils/interactions 纯函数）
 │   ├── types/              # TypeScript 类型定义
-│   └── utils/              # 工具函数
-│       └── mockDanmu.ts        # 模拟弹幕生成器
+│   └── utils/
+│       ├── interactions.ts     # 自动回复/抽奖/投票/礼物的纯函数匹配逻辑
+│       ├── interactions.test.ts# 互动逻辑单元测试
+│       ├── mockDanmu.ts        # 模拟弹幕生成器
+│       └── mockDanmu.test.ts   # mock 弹幕测试
 ├── api/                    # Node.js 后端
 │   ├── src/
-│   │   ├── index.ts            # Express + Socket.IO 服务入口
-│   │   ├── douyin.ts           # 抖音直播连接
+│   │   ├── index.ts            # Express + Socket.IO 服务入口（事件已类型化）
+│   │   ├── types.ts            # DanmuMessage 与 Socket.IO 事件类型
+│   │   ├── douyin.ts           # 抖音直播连接（经 Go 代理）
 │   │   └── bilibili.ts         # B站直播连接
 │   └── douyinLive-proxy        # Go 抖音代理（二进制）
 ├── start.sh                # 一键启动脚本
+├── vitest.config.ts        # vitest 测试配置
 └── vite.config.ts
 ```

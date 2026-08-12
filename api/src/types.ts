@@ -6,3 +6,14 @@ export interface DanmuMessage {
   timestamp: number;
   platform: string;
 }
+
+/** 客户端 → 服务端 事件 */
+export interface DanmuClientEvents {
+  join: (data: { platform: 'bilibili' | 'douyin'; roomId: string }) => void;
+}
+
+/** 服务端 → 客户端 事件 */
+export interface DanmuServerEvents {
+  danmu: (msg: DanmuMessage) => void;
+  status: (status: { platform: string; roomId: string; connected: boolean }) => void;
+}

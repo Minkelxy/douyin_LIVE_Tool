@@ -183,6 +183,12 @@ export function useInteraction() {
     }
   }, [voteSession]);
 
+  // 清除投票会话，回到创建表单（用于「开始新投票」）
+  const resetVote = useCallback(() => {
+    setVoteSession(null);
+    setVoteResults({});
+  }, []);
+
   // 获取投票结果
   const getVoteResults = useCallback(() => {
     if (!voteSession) return null;
@@ -248,6 +254,7 @@ export function useInteraction() {
     startVote,
     processVote,
     endVote,
+    resetVote,
     getVoteResults,
 
     // 礼物感谢

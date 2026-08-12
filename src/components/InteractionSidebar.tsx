@@ -26,6 +26,7 @@ interface InteractionSidebarProps {
   voteSession: VoteSession | null;
   onStartVote: (title: string, options: string[], keyword: string) => void;
   onEndVote: () => void;
+  onResetVote: () => void;
   getVoteResults: () => VoteOption[] | null;
 
   // 礼物感谢
@@ -59,6 +60,7 @@ export function InteractionSidebar({
   voteSession,
   onStartVote,
   onEndVote,
+  onResetVote,
   getVoteResults,
   giftReplyRules,
   onAddGiftReply,
@@ -159,6 +161,7 @@ export function InteractionSidebar({
             session={voteSession}
             onStart={onStartVote}
             onEnd={onEndVote}
+            onReset={onResetVote}
             getResults={getVoteResults}
           />
         )}

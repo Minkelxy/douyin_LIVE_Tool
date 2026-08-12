@@ -9,6 +9,17 @@ const SOCKET_PATH = import.meta.env.PROD ? '/douyinlive/socket.io' : '/socket.io
 
 export type PlatformType = 'mock' | 'bilibili' | 'douyin';
 
+/** 服务端 → 客户端 事件载荷 */
+interface ServerToClientEvents {
+  danmu: (msg: { username: string; content: string; platform: string }) => void;
+  status: (status: { platform: string; roomId: string; connected: boolean }) => void;
+}
+
+/** 客户端 → 服务端 事件载荷 */
+interface ClientToServerEvents {
+  join: (data: { platform: 'bilibili' | 'douyin'; roomId: string }) => void;
+}
+
 export function useDanmu() {
   const [danmus, setDanmus] = useState<Danmu[]>([]);
   const [platform, setPlatform] = useState<PlatformType>('mock');
@@ -16,7 +27,7 @@ export function useDanmu() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterKeyword, setFilterKeyword] = useState('');
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const intervalRef = useRef<number | null>(null);
 
   const addDanmu = useCallback((danmu: Danmu) => {
@@ -50,7 +61,7 @@ export function useDanmu() {
     } else {
       if (!roomId.trim()) return;
 
-      socketRef.current = io(SOCKET_URL, { path: SOCKET_PATH });
+      socketRef.current = io(SOCKET_URL, { path: SOCKET_PATH }) as Socket<ServerToClientEvents, ClientToServerEvents>;
 
       socketRef.current.on('connect', () => {
         setError(null);

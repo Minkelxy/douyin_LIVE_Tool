@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { DanmuList } from './components/DanmuList';
 import { ReplyInput } from './components/ReplyInput';
@@ -9,6 +9,7 @@ import { useInteraction } from './hooks/useInteraction';
 export default function App() {
   const {
     danmus,
+    allDanmus,
     platform,
     setPlatform,
     roomId,
@@ -55,15 +56,26 @@ export default function App() {
     processVote(d);
   }, [processAutoReply, processGiftReply, processLottery, processVote, sendReply]);
 
-  // 监听弹幕变化
+  // 已处理过互动的弹幕 id，保证每条非回复弹幕恰好触发一次，避免重复自动回复
+  const processedDanmuIds = useRef<string[]>([]);
+
+  // 监听弹幕变化：处理所有尚未处理过的非回复弹幕。
+  // 用 allDanmus（而非筛选后的 danmus），确保被关键词筛选掉的弹幕也参与自动回复/抽奖/投票，
+  // 且筛选词变化不会因数组引用变化而重复处理旧弹幕。
   useEffect(() => {
-    if (danmus.length > 0) {
-      const latestDanmu = danmus[danmus.length - 1];
-      if (!latestDanmu.isReply) {
-        processDanmuInteractions(latestDanmu);
-      }
+    const pending = allDanmus.filter(d => !d.isReply && !processedDanmuIds.current.includes(d.id));
+    if (pending.length === 0) return;
+
+    for (const danmu of pending) {
+      processedDanmuIds.current.push(danmu.id);
+      processDanmuInteractions(danmu);
     }
-  }, [danmus, processDanmuInteractions]);
+
+    // 防止无限增长：弹幕列表最多保留 50 条，保留 200 个历史 id 足够覆盖当前列表
+    if (processedDanmuIds.current.length > 200) {
+      processedDanmuIds.current = processedDanmuIds.current.slice(-100);
+    }
+  }, [allDanmus, processDanmuInteractions]);
 
   return (
     <div className="h-screen flex bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950">
@@ -112,6 +124,7 @@ export default function App() {
         voteSession={interaction.voteSession}
         onStartVote={interaction.startVote}
         onEndVote={interaction.endVote}
+        onResetVote={interaction.resetVote}
         getVoteResults={interaction.getVoteResults}
 
         // 礼物感谢

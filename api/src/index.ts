@@ -19,9 +19,12 @@ const PORT = process.env.PORT || 3001;
 // 托管前端静态文件
 const frontendDist = path.resolve(__dirname, '../../dist');
 app.use(express.static(frontendDist));
-// SPA fallback
+// SPA fallback：非 API 请求回退到 index.html；未匹配的 API/socket 路径返回 404，避免请求悬挂
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) return;
+  if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
+    res.status(404).json({ error: 'Not Found' });
+    return;
+  }
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 

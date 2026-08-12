@@ -33,7 +33,7 @@ export function ReplyInput({ onSend, disabled }: ReplyInputProps) {
   };
 
   return (
-    <div className="bg-gradient-to-t from-indigo-950/80 to-purple-950/50 border-t border-purple-500/30 px-6 py-4">
+    <div className="relative bg-gradient-to-t from-indigo-950/80 to-purple-950/50 border-t border-purple-500/30 px-6 py-4">
       <form onSubmit={handleSubmit} className="flex items-end gap-3 relative">
         <button
           type="button"

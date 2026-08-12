@@ -93,6 +93,11 @@ export function useDanmu() {
         setError('无法连接后端服务器，请确认服务已启动');
       });
 
+      socketRef.current.on('disconnect', () => {
+        // 服务端断开（含自动重连期间）→ 状态标记为未连接，重连成功后会重新 join
+        setConnected(false);
+      });
+
       socketRef.current.on('danmu', (msg: { username: string; content: string; platform: string }) => {
         const newDanmu: Danmu = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,

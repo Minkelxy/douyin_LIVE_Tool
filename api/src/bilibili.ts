@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import type { DanmuMessage } from './types';
+import { parseBilibiliEvent } from './bilibiliParse';
 
 const MAX_RECONNECT_DELAY = 30000;
 const INITIAL_RECONNECT_DELAY = 1000;
@@ -148,61 +149,9 @@ export class BilibiliLive {
       if (!Array.isArray(data)) return;
 
       for (const item of data) {
-        if (item.cmd === 'DANMU_MSG') {
-          const info = item.info;
-          if (info && info[1] && info[2]) {
-            this.onMessage?.({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: info[2][1],
-              content: info[1],
-              timestamp: Date.now(),
-              platform: 'bilibili'
-            });
-          }
-        } else if (item.cmd === 'SEND_GIFT') {
-          const d = item.data;
-          if (d) {
-            this.onMessage?.({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: d.uname || '匿名',
-              content: `[礼物] ${d.giftName || '礼物'} x${d.num || 1}`,
-              timestamp: Date.now(),
-              platform: 'bilibili'
-            });
-          }
-        } else if (item.cmd === 'INTERACT_WORD') {
-          const d = item.data;
-          if (d) {
-            this.onMessage?.({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: d.uname || '匿名',
-              content: d.msg_type === 2 ? '[关注了主播]' : '[进入直播间]',
-              timestamp: Date.now(),
-              platform: 'bilibili'
-            });
-          }
-        } else if (item.cmd === 'WELCOME') {
-          const d = item.data;
-          if (d) {
-            this.onMessage?.({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: d.uname || '匿名',
-              content: '[进入直播间]',
-              timestamp: Date.now(),
-              platform: 'bilibili'
-            });
-          }
-        } else if (item.cmd === 'GUARD_BUY') {
-          const d = item.data;
-          if (d) {
-            this.onMessage?.({
-              id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              username: d.username || '匿名',
-              content: `[开通舰长] ${d.gift_name || ''}`,
-              timestamp: Date.now(),
-              platform: 'bilibili'
-            });
-          }
+        const msg = parseBilibiliEvent(item);
+        if (msg) {
+          this.onMessage?.(msg);
         }
       }
     } catch (err) {

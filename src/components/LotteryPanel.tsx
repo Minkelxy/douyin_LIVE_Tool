@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Gift, Users, Trophy, StopCircle } from 'lucide-react';
-import type { LotteryResult } from '../types/interaction';
+import type { LotteryParticipant, LotteryResult } from '../types/interaction';
 
 interface LotteryPanelProps {
   active: boolean;
   keyword: string;
-  participantsCount: number;
+  participants: LotteryParticipant[];
   result: LotteryResult | null;
   onStart: (keyword: string) => void;
   onDraw: () => void;
@@ -15,7 +15,7 @@ interface LotteryPanelProps {
 export function LotteryPanel({
   active,
   keyword,
-  participantsCount,
+  participants,
   result,
   onStart,
   onDraw,
@@ -68,14 +68,34 @@ export function LotteryPanel({
             </div>
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-purple-400" />
-              <span className="text-purple-200 font-medium">{participantsCount} 人参与</span>
+              <span className="text-purple-200 font-medium">{participants.length} 人参与</span>
             </div>
           </div>
+
+          {participants.length > 0 && (
+            <div className="max-h-24 overflow-y-auto scrollbar-thin rounded-lg bg-purple-900/30 border border-purple-500/20 p-2">
+              <div className="flex flex-wrap gap-1">
+                {participants.slice(0, 30).map(p => (
+                  <span
+                    key={p.id}
+                    className="text-xs bg-purple-800/50 text-purple-200 px-1.5 py-0.5 rounded"
+                  >
+                    {p.username}
+                  </span>
+                ))}
+                {participants.length > 30 && (
+                  <span className="text-xs text-purple-400/70 px-1 py-0.5">
+                    +{participants.length - 30} 人
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button
               onClick={onDraw}
-              disabled={participantsCount === 0}
+              disabled={participants.length === 0}
               className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/50 text-emerald-400 rounded-lg font-bold hover:from-emerald-500/30 hover:to-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Trophy className="w-5 h-5" />

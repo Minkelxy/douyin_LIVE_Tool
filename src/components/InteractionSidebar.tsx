@@ -4,7 +4,7 @@ import { AutoReplyPanel } from './AutoReplyPanel';
 import { LotteryPanel } from './LotteryPanel';
 import { VotePanel } from './VotePanel';
 import { GiftReplyPanel } from './GiftReplyPanel';
-import type { AutoReplyRule, LotteryResult, VoteSession, VoteOption, GiftReplyRule } from '../types/interaction';
+import type { AutoReplyRule, LotteryParticipant, LotteryResult, VoteSession, VoteOption, GiftReplyRule } from '../types/interaction';
 
 interface InteractionSidebarProps {
   // 自动回复
@@ -16,7 +16,7 @@ interface InteractionSidebarProps {
   // 抽奖
   lotteryActive: boolean;
   lotteryKeyword: string;
-  lotteryParticipantsCount: number;
+  lotteryParticipants: LotteryParticipant[];
   lotteryResult: LotteryResult | null;
   onStartLottery: (keyword: string) => void;
   onDrawLottery: () => void;
@@ -52,7 +52,7 @@ export function InteractionSidebar({
   onUpdateAutoReply,
   lotteryActive,
   lotteryKeyword,
-  lotteryParticipantsCount,
+  lotteryParticipants,
   lotteryResult,
   onStartLottery,
   onDrawLottery,
@@ -148,7 +148,7 @@ export function InteractionSidebar({
           <LotteryPanel
             active={lotteryActive}
             keyword={lotteryKeyword}
-            participantsCount={lotteryParticipantsCount}
+            participants={lotteryParticipants}
             result={lotteryResult}
             onStart={onStartLottery}
             onDraw={onDrawLottery}

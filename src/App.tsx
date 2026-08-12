@@ -114,7 +114,7 @@ export default function App() {
         // 抽奖
         lotteryActive={interaction.lotteryActive}
         lotteryKeyword={interaction.lotteryKeyword}
-        lotteryParticipantsCount={interaction.lotteryParticipants.length}
+        lotteryParticipants={interaction.lotteryParticipants}
         lotteryResult={interaction.lotteryResult}
         onStartLottery={interaction.startLottery}
         onDrawLottery={interaction.drawLottery}
